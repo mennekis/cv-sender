@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+   <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Seafarer CV Mailing</title>
+      <link rel="stylesheet" href="style.css" />
+   </head>
+   <body>
+      <h1>Seafarer CV Mailing Launch</h1>
+
+      <form id="sendForm">
+         <label for="subject">Subject* : </label>
+         <input type="text" id="subject" name="subject" required />
+
+         <label for="coverLetter">Text of the letter * :</label>
+         <textarea id="coverLetter" name="coverLetter" required></textarea>
+
+         <label for="senderName"
+            >Sender's name (for example: Ivan Petrov) *</label
+         >
+         <input type="text" id="senderName" name="senderName" required />
+
+         <label for="resume">Attach PDF file (resume) *</label>
+         <input
+            type="file"
+            id="resume"
+            name="resume"
+            accept="application/pdf"
+            required
+         />
+
+         <label for="emails"
+            >File with email addresses (CSV or XLS or XLSX) *</label
+         >
+         <input
+            type="file"
+            id="emails"
+            name="emails"
+            accept=".csv, .xls,.xlsx"
+            required
+         />
+
+         <button type="submit">Start the mailing process</button>
+      </form>
+
+      <div id="status"></div>
+
+      <script src="script.js"></script>
+   </body>
+</html>
