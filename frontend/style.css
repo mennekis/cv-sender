@@ -1,0 +1,45 @@
+body {
+   font-family: Arial, sans-serif;
+   max-width: 600px;
+   margin: 40px auto;
+   padding: 0 15px;
+}
+
+label {
+   display: block;
+   margin: 15px 0 5px;
+   font-weight: bold;
+}
+
+input[type="text"],
+textarea,
+input[type="file"] {
+   width: 100%;
+   padding: 8px;
+   box-sizing: border-box;
+}
+
+textarea {
+   resize: vertical;
+   min-height: 100px;
+}
+
+button {
+   margin-top: 20px;
+   padding: 12px 20px;
+   font-size: 16px;
+   cursor: pointer;
+}
+
+#status {
+   margin-top: 20px;
+   font-weight: bold;
+}
+
+.error {
+   color: red;
+}
+
+.success {
+   color: green;
+}
