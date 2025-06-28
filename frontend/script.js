@@ -22,6 +22,11 @@ form.addEventListener("submit", async (e) => {
       status.className = "error";
       return;
    }
+   if (!form.contactPhone.value.trim()) {
+      status.textContent = "Please enter the sender's phone number.";
+      status.className = "error";
+      return;
+   }
    if (form.resume.files.length === 0) {
       status.textContent = "Please select a PDF file.";
       status.className = "error";
@@ -38,6 +43,7 @@ form.addEventListener("submit", async (e) => {
    formData.append("subject", form.subject.value.trim());
    formData.append("coverLetter", form.coverLetter.value.trim());
    formData.append("senderName", form.senderName.value.trim());
+   formData.append("contactPhone", form.contactPhone.value.trim());
    formData.append("resume", form.resume.files[0]);
    formData.append("emails", form.emails.files[0]);
 
@@ -57,7 +63,7 @@ form.addEventListener("submit", async (e) => {
 
       status.textContent = "✅ The newsletter has been successfully sent!";
       status.className = "success";
-        form.reset();
+      form.reset();
    } catch (err) {
       status.textContent = "❌ Sending error: " + err.message;
       status.className = "error";
