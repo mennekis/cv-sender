@@ -38,6 +38,11 @@ router.post(
             .status(400)
             .json({ message: "The subject field is not filled in!" });
       }
+      if (!req.body.contactPhone) {
+         return res
+            .status(400)
+            .json({ message: "The contact phone field is not filled in!" });
+      }
       const emailsFile = req.files.emails[0];
       const allowedExt = [".csv", ".xls", ".xlsx"];
       const ext = emailsFile.originalname.split(".").pop().toLowerCase();
@@ -59,6 +64,7 @@ router.post(
          // Для plain text
          const unsubscribePlain = `
          \nBest regards, ${req.body.senderName}.\n
+         \nPhone: ${req.body.contactPhone || "Not provided"}\n
          \n---\nIf you do not wish to receive such emails, simply reply to this email or write to unsubscribe@seafarer-cv.com\nSeafarer CV Team`;
 
          // Формируем вложения
@@ -69,6 +75,10 @@ router.post(
          const unsubscribeHtml = `
          <br>
          <i>Best regards, ${req.body.senderName}</i>
+         <br>
+         <phone style="color:#888;font-size:12px;">
+            <i>Phone: ${req.body.contactPhone || "Not provided"}</i>
+         </phone>
          <br>
           <hr>
           <p style="color:#888;font-size:12px;">
