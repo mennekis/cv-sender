@@ -60,11 +60,19 @@ router.post(
          );
          console.warn("Найденные email:", emails.length);
          // ...existing code...
-
+         let messengers = [];
+         try {
+            messengers = JSON.parse(req.body.messengers || "[]");
+         } catch (e) {
+            messengers = [];
+         }
+         const messengersStr = messengers.length ? messengers.join("/") : "";
          // Для plain text
          const unsubscribePlain = `
          \nBest regards, ${req.body.senderName}.\n
-         \nPhone: ${req.body.contactPhone || "Not provided"}\n
+         \nPhone: ${req.body.contactPhone}${
+            messengersStr ? " (" + messengersStr + ")" : ""
+         }\n
          \n---\nIf you do not wish to receive such emails, simply reply to this email or write to unsubscribe@your_sendgrid_api_key\nSeafarer CV Team`;
 
          // Формируем вложения
@@ -103,6 +111,12 @@ router.post(
          console.warn(prefixSender);
          for (const to of emails) {
             try {
+               const subjectWithEmoji =
+                  "🧑 " +
+                  (req.body.subject ||
+                     process.env.EMAIL_SUBJECT ||
+                     "Seafarer Resume") +
+                  " ⚓️";
                console.log({
                   to,
                   from: prefixSender
@@ -119,10 +133,7 @@ router.post(
                   from:
                      `${prefixSender}_${process.env.SENDGRID_FROM}` ||
                      process.env.SENDGRID_FROM,
-                  subject:
-                     req.body.subject ||
-                     process.env.EMAIL_SUBJECT ||
-                     "Seafarer Resume",
+                  subject: subjectWithEmoji,
                   text: coverLetterTextWithUnsub,
                   attachments: [resumeAttachment],
                });
