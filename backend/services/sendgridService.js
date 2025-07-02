@@ -3,6 +3,11 @@ const path = require("path");
 const fs = require("fs");
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+if (process.env.NODE_ENV === "development") {
+   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
+
 /**
  * Отправка email с использованием SendGrid
  * @param {string} to - Получатель

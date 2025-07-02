@@ -9,6 +9,7 @@ module.exports = {
          max_restarts: 5,
          env: {
             NODE_ENV: "production",
+            NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/ca-certificates.crt",
          },
          error_file: "./logs/err.log",
          out_file: "./logs/out.log",

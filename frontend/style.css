@@ -30,7 +30,10 @@ button {
    font-size: 16px;
    cursor: pointer;
 }
-
+.messengers {
+   font-weight: 600;
+   font-style: italic;
+}
 #status {
    margin-top: 20px;
    font-weight: bold;

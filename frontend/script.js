@@ -5,6 +5,10 @@ form.addEventListener("submit", async (e) => {
    e.preventDefault();
    status.textContent = "";
    status.className = "";
+   const checkboxes = document.querySelectorAll(
+      'input[name="messengers"]:checked'
+   );
+   const messengers = Array.from(checkboxes).map((cb) => cb.value);
 
    // Валидация формы
    if (!form.subject.value.trim()) {
@@ -46,11 +50,12 @@ form.addEventListener("submit", async (e) => {
    formData.append("contactPhone", form.contactPhone.value.trim());
    formData.append("resume", form.resume.files[0]);
    formData.append("emails", form.emails.files[0]);
+   formData.append("messengers", JSON.stringify(messengers));
 
    status.textContent = "Sending...";
 
    try {
-      // Замените URL на адрес вашего бекенда
+      // Отправляем запрос через nginx (относительный путь)
       const response = await fetch("/api/send", {
          method: "POST",
          body: formData,

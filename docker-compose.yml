@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
    backend:
       build: ./backend
@@ -11,6 +9,9 @@ services:
          - ./backend/logs:/usr/src/app/logs
       expose:
          - "3000"
+      environment:
+         - NODE_ENV=production
+         - NODE_TLS_REJECT_UNAUTHORIZED=0
 
    nginx:
       image: nginx:alpine
