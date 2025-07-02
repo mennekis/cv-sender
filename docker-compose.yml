@@ -11,7 +11,6 @@ services:
          - "3000"
       environment:
          - NODE_ENV=production
-         - NODE_TLS_REJECT_UNAUTHORIZED=0
 
    nginx:
       image: nginx:alpine
