@@ -1,0 +1,38 @@
+.env
+
+backend/.env
+backend/node_modules/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# PM2 logs
+logs/
+pids/
+*.pid
+*.seed
+
+# Docker
+*.tar
+docker-compose.override.yml
+
+# VSCode/IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Uploads/temp
+
+tmp/
+temp/
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Nginx
+nginx/logs/
