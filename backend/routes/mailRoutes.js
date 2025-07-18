@@ -59,7 +59,6 @@ router.post(
             emailsFile.originalname
          );
          console.warn("Найденные email:", emails.length);
-         // ...existing code...
          let messengers = [];
          try {
             messengers = JSON.parse(req.body.messengers || "[]");
@@ -84,8 +83,12 @@ router.post(
          <br>
          <i>Best regards, ${req.body.senderName}</i>
          <br>
-         <phone style="color:#888;font-size:12px;">
-            <i>Phone: ${req.body.contactPhone || "Not provided"}</i>
+         <phone style="color:#839;font-size:12px;">
+            <i>Phone: ${
+               req.body.contactPhone || "Not provided"
+            }<spanstyle="color:#263 >${
+            messengersStr ? " (" + messengersStr + ")" : ""
+         }<span></i>
          </phone>
          <br>
           <hr>
@@ -95,11 +98,20 @@ router.post(
             <br>Seafarer CV Team
           </p>
    `;
+         const header = `<h1 style="color:#333;font-size:32px;margin-left:auto;margin-right:auto">${
+            req.body.subject || "Seafarer Resume"
+         }</h1>
+   <br>
+   <hr>`;
          const coverLetterHtml =
+            header +
+            `<div style="font-size:18px; line-height:1.5; color:#222;">` +
             coverLetterText
                .replace(/</g, "&lt;")
                .replace(/>/g, "&gt;")
-               .replace(/\n/g, "<br>") + unsubscribeHtml;
+               .replace(/\n/g, "<br>") +
+            `</div>` +
+            unsubscribeHtml;
          const coverLetterTextWithUnsub = coverLetterText + unsubscribePlain;
          const prefixSender = senderPrefix(
             req.body.senderName || process.env.FROM_NAME
@@ -135,6 +147,7 @@ router.post(
                      process.env.SENDGRID_FROM,
                   subject: subjectWithEmoji,
                   text: coverLetterTextWithUnsub,
+                  html: coverLetterHtml,
                   attachments: [resumeAttachment],
                });
                success++;
@@ -160,7 +173,7 @@ router.post("/client-error", async (req, res) => {
    const errorInfo = req.body;
    console.error("Client error:", errorInfo);
 
-   // Если хочешь отправлять себе на почту:
+   // Если хочешь отправлять себе на почти:
    try {
       await sendEmail({
          to: process.env.ADMIN_EMAIL,
