@@ -30,11 +30,14 @@ function parseEmailsFromFile(filePath, originalName) {
       throw new Error("File format not supported: " + extens);
    }
 
-   // Оставляем только валидные email-адреса
-   return emails
+   // Очистка, приведение к нижнему регистру, удаление пустых и невалидных
+   const cleanedEmails = emails
       .filter(Boolean)
-      .map((e) => String(e).trim())
+      .map((e) => String(e).trim().toLowerCase())
       .filter(isValidEmail);
+
+   // Убираем дубли
+   return [...new Set(cleanedEmails)];
 }
 
 module.exports = parseEmailsFromFile;
