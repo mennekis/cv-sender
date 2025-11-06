@@ -2,11 +2,15 @@ const fs = require("fs");
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const senderPrefix = require("../services/senderPrefix");
+const { senderPrefix, createAlias } = require("../services/senderPrefix");
 
 const clearUploads = require("../services/clearUploads");
 const parseEmailsFromFile = require("../services/parseEmailsFromFile");
-const { sendEmail, makeAttachment } = require("../services/sendgridService");
+const {
+   sendEmail,
+   sendEmails,
+   makeAttachment,
+} = require("../services/sendgridService");
 
 // Set up multer for file uploads
 const upload = multer({ dest: "uploads/" });
@@ -187,4 +191,78 @@ router.post("/client-error", async (req, res) => {
 
    res.json({ status: "received" });
 });
+
+/**
+ * Новый endpoint для запуска кампании
+ * POST /api/campaign/start
+ * Принимает: clientName, subject, body и CSV-файл с email'ами
+ */
+router.post("/campaign/start", upload.single("emails"), async (req, res) => {
+   try {
+      // Валидация входных данных
+      if (!req.body.clientName) {
+         return res.status(400).json({ error: "clientName is required" });
+      }
+      if (!req.body.subject) {
+         return res.status(400).json({ error: "subject is required" });
+      }
+      if (!req.body.body) {
+         return res.status(400).json({ error: "body is required" });
+      }
+      if (!req.file) {
+         return res
+            .status(400)
+            .json({ error: "CSV file with emails is required" });
+      }
+
+      // Проверка формата файла
+      const allowedExt = [".csv", ".xls", ".xlsx"];
+      const ext = req.file.originalname.split(".").pop().toLowerCase();
+      if (!allowedExt.includes(`.${ext}`)) {
+         return res.status(400).json({
+            error: `Unsupported file format: .${ext}. Supported formats are: ${allowedExt.join(
+               ", "
+            )}`,
+         });
+      }
+
+      // Парсинг email'ов из файла
+      const recipients = parseEmailsFromFile(
+         req.file.path,
+         req.file.originalname
+      );
+
+      if (recipients.length === 0) {
+         return res
+            .status(400)
+            .json({ error: "No valid emails found in the file" });
+      }
+
+      console.log(`📧 Found ${recipients.length} valid email addresses`);
+
+      // Создание алиаса и сохранение кампании в БД
+      const alias = await createAlias(req.body.clientName, recipients);
+      console.log(`✅ Campaign created with alias: ${alias}`);
+
+      // Запуск рассылки
+      await sendEmails(alias, recipients, req.body.subject, req.body.body);
+
+      // Очистка загруженного файла
+      try {
+         fs.unlinkSync(req.file.path);
+      } catch (err) {
+         console.warn("Failed to delete uploaded file:", err.message);
+      }
+
+      res.json({
+         message: "Campaign started successfully",
+         alias,
+         recipientsCount: recipients.length,
+      });
+   } catch (err) {
+      console.error("❌ Error starting campaign:", err);
+      res.status(500).json({ error: err.message });
+   }
+});
+
 module.exports = router;

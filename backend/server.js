@@ -1,6 +1,7 @@
 require("dotenv").config();
 const app = require("./app");
 const { sendEmail } = require("./services/sendgridService");
+const { connectDB } = require("./services/db");
 
 process.on("uncaughtException", async (err) => {
    try {
@@ -31,6 +32,15 @@ process.on("unhandledRejection", async (reason) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+// Подключение к MongoDB
+connectDB();
+
+// Инициализация и запуск Gmail reply checker (опционально)
+if (process.env.ENABLE_GMAIL_REPLY_CHECKER === "true") {
+   const { startEmailChecker } = require("./services/gmailReplyService");
+   startEmailChecker();
+}
 
 // console.log(process.env.ADMIN_EMAIL + " admin email");
 

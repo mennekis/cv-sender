@@ -1,6 +1,7 @@
 const sgMail = require("@sendgrid/mail");
 const path = require("path");
 const fs = require("fs");
+const Campaign = require("../models/Campaign");
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
@@ -38,8 +39,71 @@ function makeAttachment(file) {
    };
 }
 
+/**
+ * Массовая рассылка email с обновлением статуса кампании в БД
+ * @param {string} alias - Алиас кампании
+ * @param {string[]} recipients - Список email адресов получателей
+ * @param {string} subject - Тема письма
+ * @param {string} body - HTML содержимое письма
+ * @param {string} text - Текстовая версия письма (опционально)
+ * @param {Array} attachments - Массив вложений (опционально)
+ */
+async function sendEmails(
+   alias,
+   recipients,
+   subject,
+   body,
+   text = null,
+   attachments = []
+) {
+   const campaign = await Campaign.findOne({ alias });
+   if (!campaign) {
+      console.error("❌ Campaign not found for alias:", alias);
+      return;
+   }
+
+   // Обновляем статус на "sending"
+   campaign.status = "sending";
+   await campaign.save();
+   console.log(`📤 Campaign "${alias}" status updated to "sending"`);
+
+   let successCount = 0;
+   let errorCount = 0;
+
+   // Отправляем email каждому получателю
+   for (const email of recipients) {
+      try {
+         const msg = {
+            to: email,
+            from: `${alias}@${
+               process.env.SENDGRID_DOMAIN || "your_sendgrid_api_key"
+            }`,
+            subject,
+            html: body,
+            ...(text && { text }),
+            ...(attachments.length > 0 && { attachments }),
+         };
+
+         await sgMail.send(msg);
+         console.log(`✅ Sent to ${email}`);
+         successCount++;
+      } catch (err) {
+         console.error(`❌ Error sending to ${email}:`, err.message);
+         errorCount++;
+      }
+   }
+
+   // Обновляем статус на "completed" после завершения рассылки
+   campaign.status = "completed";
+   await campaign.save();
+   console.log(
+      `✅ Campaign "${alias}" completed. Success: ${successCount}, Errors: ${errorCount}`
+   );
+}
+
 module.exports = {
    sendEmail,
+   sendEmails,
    makeAttachment,
 };
 // Этот модуль предоставляет функции для отправки email через SendGrid
