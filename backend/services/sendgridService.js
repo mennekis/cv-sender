@@ -3,6 +3,10 @@ const path = require("path");
 const fs = require("fs");
 const Campaign = require("../models/Campaign");
 
+if (!process.env.SENDGRID_API_KEY) {
+   throw new Error("SENDGRID_API_KEY is not set in environment variables");
+}
+
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 if (process.env.NODE_ENV === "development") {
@@ -12,31 +16,54 @@ if (process.env.NODE_ENV === "development") {
 /**
  * Отправка email с использованием SendGrid
  * @param {string} to - Получатель
+ * @param {string} from - Отправитель
  * @param {string} subject - Тема письма
  * @param {string} text - Текст письма
  * @param {string} html - HTML-содержимое письма
  * @param {Array} attachments - Массив объектов вложений
+ * @throws {Error} Если отправка не удалась
  */
 async function sendEmail({ to, from, subject, text, html, attachments = [] }) {
-   const msg = {
-      to,
-      from, // укажи свой email-отправителя в .env
-      subject,
-      text,
-      html,
-      attachments,
-   };
-   await sgMail.send(msg);
-   console.log(`Email sent to ${to} with subject "${subject}"`);
+   if (!to || !from || !subject) {
+      throw new Error("Missing required email parameters: to, from, subject");
+   }
+
+   try {
+      const msg = {
+         to,
+         from,
+         subject,
+         text,
+         html,
+         attachments,
+      };
+      await sgMail.send(msg);
+      console.log(`✅ Email sent to ${to} with subject "${subject}"`);
+   } catch (err) {
+      console.error(`❌ Failed to send email to ${to}:`, err.message);
+      if (err.response) {
+         console.error("SendGrid API Error:", err.response.body);
+      }
+      throw err; // Пробрасываем ошибку дальше для обработки
+   }
 }
 function makeAttachment(file) {
-   const content = fs.readFileSync(file.path).toString("base64");
-   return {
-      content,
-      filename: file.originalname,
-      type: file.mimetype,
-      disposition: "attachment",
-   };
+   if (!file || !file.path) {
+      throw new Error("Invalid file object for attachment");
+   }
+
+   try {
+      const content = fs.readFileSync(file.path).toString("base64");
+      return {
+         content,
+         filename: file.originalname || "attachment",
+         type: file.mimetype || "application/octet-stream",
+         disposition: "attachment",
+      };
+   } catch (err) {
+      console.error("Error reading file for attachment:", err.message);
+      throw new Error(`Failed to read attachment file: ${err.message}`);
+   }
 }
 
 /**
@@ -56,10 +83,18 @@ async function sendEmails(
    text = null,
    attachments = []
 ) {
+   if (
+      !alias ||
+      !recipients ||
+      !Array.isArray(recipients) ||
+      recipients.length === 0
+   ) {
+      throw new Error("Invalid parameters for sendEmails");
+   }
+
    const campaign = await Campaign.findOne({ alias });
    if (!campaign) {
-      console.error("❌ Campaign not found for alias:", alias);
-      return;
+      throw new Error(`Campaign not found for alias: ${alias}`);
    }
 
    // Обновляем статус на "sending"
@@ -69,6 +104,7 @@ async function sendEmails(
 
    let successCount = 0;
    let errorCount = 0;
+   const errors = []; // Сохраняем детали ошибок
 
    // Отправляем email каждому получателю
    for (const email of recipients) {
@@ -90,15 +126,27 @@ async function sendEmails(
       } catch (err) {
          console.error(`❌ Error sending to ${email}:`, err.message);
          errorCount++;
+         errors.push({
+            email,
+            error: err.message,
+            timestamp: new Date(),
+         });
       }
    }
 
-   // Обновляем статус на "completed" после завершения рассылки
+   // Обновляем статус на "completed" после завершения рассылки и сохраняем статистику
    campaign.status = "completed";
+   campaign.successCount = successCount;
+   campaign.errorCount = errorCount;
    await campaign.save();
    console.log(
       `✅ Campaign "${alias}" completed. Success: ${successCount}, Errors: ${errorCount}`
    );
+
+   // Логируем ошибки, если есть
+   if (errors.length > 0) {
+      console.warn(`⚠️  ${errors.length} emails failed to send`);
+   }
 }
 
 module.exports = {

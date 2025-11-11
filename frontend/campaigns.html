@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ru">
+   <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Просмотр кампаний - Seafarer CV</title>
+      <style>
+         * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+         }
+         body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+         }
+         .container {
+            max-width: 1200px;
+            margin: 0 auto;
+         }
+         h1 {
+            color: #333;
+            margin-bottom: 20px;
+         }
+         .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+         }
+         .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+         }
+         .stat-card h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+         }
+         .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+         }
+         .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+         }
+         .filters select,
+         .filters button {
+            padding: 10px 15px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+         }
+         .filters button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+         }
+         .filters button:hover {
+            background: #0056b3;
+         }
+         .campaigns-table {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+         }
+         table {
+            width: 100%;
+            border-collapse: collapse;
+         }
+         th,
+         td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+         }
+         th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+         }
+         tr:hover {
+            background: #f8f9fa;
+         }
+         .status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+         }
+         .status.pending {
+            background: #fff3cd;
+            color: #856404;
+         }
+         .status.sending {
+            background: #cfe2ff;
+            color: #084298;
+         }
+         .status.completed {
+            background: #d1e7dd;
+            color: #0f5132;
+         }
+         .alias-link {
+            color: #007bff;
+            text-decoration: none;
+            cursor: pointer;
+         }
+         .alias-link:hover {
+            text-decoration: underline;
+         }
+         .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+         }
+         .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+         }
+         .campaign-detail {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: none;
+         }
+         .campaign-detail.show {
+            display: block;
+         }
+         .campaign-detail h2 {
+            margin-bottom: 15px;
+            color: #333;
+         }
+         .campaign-detail .field {
+            margin-bottom: 10px;
+         }
+         .campaign-detail .field-label {
+            font-weight: 600;
+            color: #666;
+            margin-right: 10px;
+         }
+         .back-btn {
+            background: #6c757d;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+         }
+         .back-btn:hover {
+            background: #5a6268;
+         }
+      </style>
+   </head>
+   <body>
+      <div class="container">
+         <h1>📊 Просмотр кампаний рассылки</h1>
+
+         <div id="stats" class="stats"></div>
+
+         <div class="filters">
+            <select id="statusFilter">
+               <option value="">Все статусы</option>
+               <option value="pending">Pending</option>
+               <option value="sending">Sending</option>
+               <option value="completed">Completed</option>
+            </select>
+            <button onclick="loadCampaigns()">Обновить</button>
+            <button onclick="loadStats()">Обновить статистику</button>
+         </div>
+
+         <div id="error" class="error" style="display: none"></div>
+
+         <div id="campaignsList">
+            <div class="loading">Загрузка...</div>
+         </div>
+
+         <div id="campaignDetail" class="campaign-detail">
+            <button class="back-btn" onclick="showList()">← Назад к списку</button>
+            <div id="detailContent"></div>
+         </div>
+      </div>
+
+      <script>
+         let currentAlias = null;
+
+         async function loadStats() {
+            try {
+               const response = await fetch("/api/campaigns/stats");
+               if (!response.ok) throw new Error("Ошибка загрузки статистики");
+               const data = await response.json();
+
+               const statsHtml = `
+            <div class="stat-card">
+               <h3>Всего кампаний</h3>
+               <div class="value">${data.campaigns.total}</div>
+            </div>
+            <div class="stat-card">
+               <h3>Завершено</h3>
+               <div class="value">${data.campaigns.completed}</div>
+            </div>
+            <div class="stat-card">
+               <h3>Отправляется</h3>
+               <div class="value">${data.campaigns.sending}</div>
+            </div>
+            <div class="stat-card">
+               <h3>Ожидает</h3>
+               <div class="value">${data.campaigns.pending}</div>
+            </div>
+            <div class="stat-card">
+               <h3>Успешно отправлено</h3>
+               <div class="value">${data.emails.totalSuccess}</div>
+            </div>
+            <div class="stat-card">
+               <h3>Ошибок</h3>
+               <div class="value">${data.emails.totalErrors}</div>
+            </div>
+         `;
+               document.getElementById("stats").innerHTML = statsHtml;
+            } catch (err) {
+               showError("Ошибка загрузки статистики: " + err.message);
+            }
+         }
+
+         async function loadCampaigns() {
+            try {
+               const status = document.getElementById("statusFilter").value;
+               let url = "/api/campaigns?limit=100";
+               if (status) url += `&status=${status}`;
+
+               const response = await fetch(url);
+               if (!response.ok) throw new Error("Ошибка загрузки кампаний");
+               const data = await response.json();
+
+               if (data.campaigns.length === 0) {
+                  document.getElementById("campaignsList").innerHTML =
+                     "<div class='loading'>Кампании не найдены</div>";
+                  return;
+               }
+
+               const tableHtml = `
+            <table>
+               <thead>
+                  <tr>
+                     <th>Алиас</th>
+                     <th>Клиент</th>
+                     <th>Email клиента</th>
+                     <th>Получателей</th>
+                     <th>Статус</th>
+                     <th>Успешно</th>
+                     <th>Ошибок</th>
+                     <th>Дата создания</th>
+                  </tr>
+               </thead>
+               <tbody>
+                  ${data.campaigns
+                     .map(
+                        (campaign) => `
+                     <tr>
+                        <td>
+                           <a class="alias-link" onclick="showDetail('${
+                              campaign.alias
+                           }')">${campaign.alias}</a>
+                        </td>
+                        <td>${campaign.clientName || "-"}</td>
+                        <td>${campaign.clientEmail || "-"}</td>
+                        <td>${campaign.recipients?.length || 0}</td>
+                        <td>
+                           <span class="status ${campaign.status}">${
+                           campaign.status
+                        }</span>
+                        </td>
+                        <td>${campaign.successCount || 0}</td>
+                        <td>${campaign.errorCount || 0}</td>
+                        <td>${new Date(campaign.createdAt).toLocaleString(
+                           "ru-RU"
+                        )}</td>
+                     </tr>
+                  `
+                     )
+                     .join("")}
+               </tbody>
+            </table>
+         `;
+               document.getElementById("campaignsList").innerHTML =
+                  '<div class="campaigns-table">' + tableHtml + "</div>";
+            } catch (err) {
+               showError("Ошибка загрузки кампаний: " + err.message);
+            }
+         }
+
+         async function showDetail(alias) {
+            try {
+               const response = await fetch(`/api/campaign/${alias}`);
+               if (!response.ok) throw new Error("Ошибка загрузки деталей");
+               const campaign = await response.json();
+
+               currentAlias = alias;
+
+               const detailHtml = `
+            <h2>Детали кампании: ${campaign.alias}</h2>
+            <div class="field">
+               <span class="field-label">Клиент:</span>
+               <span>${campaign.clientName || "-"}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Email клиента:</span>
+               <span>${campaign.clientEmail || "-"}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Алиас:</span>
+               <span>${campaign.alias}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Статус:</span>
+               <span class="status ${campaign.status}">${campaign.status}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Тема:</span>
+               <span>${campaign.subject || "-"}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Отправитель:</span>
+               <span>${campaign.senderName || "-"}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Телефон:</span>
+               <span>${campaign.contactPhone || "-"}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Мессенджеры:</span>
+               <span>${campaign.messengers?.join(", ") || "-"}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Получателей:</span>
+               <span>${campaign.recipients?.length || 0}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Успешно отправлено:</span>
+               <span>${campaign.successCount || 0}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Ошибок:</span>
+               <span>${campaign.errorCount || 0}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Дата создания:</span>
+               <span>${new Date(campaign.createdAt).toLocaleString("ru-RU")}</span>
+            </div>
+            <div class="field">
+               <span class="field-label">Получатели:</span>
+               <div style="max-height: 200px; overflow-y: auto; margin-top: 10px;">
+                  ${campaign.recipients
+                     ?.map((email) => `<div>${email}</div>`)
+                     .join("") || "-"}
+               </div>
+            </div>
+         `;
+
+               document.getElementById("detailContent").innerHTML = detailHtml;
+               document.getElementById("campaignsList").style.display = "none";
+               document.getElementById("campaignDetail").classList.add("show");
+            } catch (err) {
+               showError("Ошибка загрузки деталей: " + err.message);
+            }
+         }
+
+         function showList() {
+            document.getElementById("campaignsList").style.display = "block";
+            document.getElementById("campaignDetail").classList.remove("show");
+            currentAlias = null;
+         }
+
+         function showError(message) {
+            const errorDiv = document.getElementById("error");
+            errorDiv.textContent = message;
+            errorDiv.style.display = "block";
+            setTimeout(() => {
+               errorDiv.style.display = "none";
+            }, 5000);
+         }
+
+         // Загрузка при старте
+         loadStats();
+         loadCampaigns();
+
+         // Автообновление каждые 30 секунд
+         setInterval(() => {
+            loadStats();
+            if (!currentAlias) {
+               loadCampaigns();
+            }
+         }, 30000);
+      </script>
+   </body>
+</html>
+

@@ -26,6 +26,11 @@ form.addEventListener("submit", async (e) => {
       status.className = "error";
       return;
    }
+   if (!form.clientEmail.value.trim()) {
+      status.textContent = "Please enter the sender's email address.";
+      status.className = "error";
+      return;
+   }
    if (!form.contactPhone.value.trim()) {
       status.textContent = "Please enter the sender's phone number.";
       status.className = "error";
@@ -47,6 +52,7 @@ form.addEventListener("submit", async (e) => {
    formData.append("subject", form.subject.value.trim());
    formData.append("coverLetter", form.coverLetter.value.trim());
    formData.append("senderName", form.senderName.value.trim());
+   formData.append("clientEmail", form.clientEmail.value.trim());
    formData.append("contactPhone", form.contactPhone.value.trim());
    formData.append("resume", form.resume.files[0]);
    formData.append("emails", form.emails.files[0]);

@@ -3,6 +3,29 @@ const app = require("./app");
 const { sendEmail } = require("./services/sendgridService");
 const { connectDB } = require("./services/db");
 
+// Валидация обязательных переменных окружения
+const requiredEnvVars = [
+   "SENDGRID_API_KEY",
+   "SENDGRID_FROM",
+   "ADMIN_EMAIL",
+   "MONGO_URI",
+];
+
+const missingVars = requiredEnvVars.filter((v) => !process.env[v]);
+if (missingVars.length > 0) {
+   console.error(
+      "❌ Missing required environment variables:",
+      missingVars.join(", ")
+   );
+   console.error("Please check your .env file or environment configuration.");
+   process.exit(1);
+}
+
+// Проверка опциональных переменных с предупреждениями
+if (!process.env.SENDGRID_DOMAIN) {
+   console.warn("⚠️  SENDGRID_DOMAIN not set, using default: your_sendgrid_api_key");
+}
+
 process.on("uncaughtException", async (err) => {
    try {
       await sendEmail({

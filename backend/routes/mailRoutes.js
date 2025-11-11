@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const { senderPrefix, createAlias } = require("../services/senderPrefix");
+const Campaign = require("../models/Campaign");
 
 const clearUploads = require("../services/clearUploads");
 const parseEmailsFromFile = require("../services/parseEmailsFromFile");
@@ -12,8 +13,42 @@ const {
    makeAttachment,
 } = require("../services/sendgridService");
 
-// Set up multer for file uploads
-const upload = multer({ dest: "uploads/" });
+// Set up multer for file uploads с ограничениями
+const upload = multer({
+   dest: "uploads/",
+   limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB максимум на файл
+      files: 2, // максимум 2 файла (resume + emails)
+   },
+   fileFilter: (req, file, cb) => {
+      // Проверка типа файла для resume
+      if (file.fieldname === "resume") {
+         if (file.mimetype === "application/pdf") {
+            cb(null, true);
+         } else {
+            cb(new Error("Resume must be a PDF file"), false);
+         }
+      } else if (file.fieldname === "emails") {
+         // Для emails файла проверяем расширение
+         const allowedMimes = [
+            "text/csv",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+         ];
+         const allowedExts = /\.(csv|xls|xlsx)$/i;
+         if (
+            allowedMimes.includes(file.mimetype) ||
+            allowedExts.test(file.originalname)
+         ) {
+            cb(null, true);
+         } else {
+            cb(new Error("Emails file must be CSV or Excel format"), false);
+         }
+      } else {
+         cb(null, true);
+      }
+   },
+});
 
 // Заглушка-контроллер (позже добавим обработку)
 router.post(
@@ -25,6 +60,24 @@ router.post(
    ]),
 
    async (req, res) => {
+      // Обработка ошибок multer
+      if (req.fileValidationError) {
+         return res.status(400).json({ message: req.fileValidationError });
+      }
+
+      // Обработка ошибок размера файла
+      if (req.files) {
+         for (const field in req.files) {
+            for (const file of req.files[field]) {
+               if (file.size > 10 * 1024 * 1024) {
+                  return res.status(400).json({
+                     message: `File ${file.originalname} is too large. Maximum size is 10MB.`,
+                  });
+               }
+            }
+         }
+      }
+
       console.log("Получен запрос на отправку email");
       console.log("Тело запроса:", req.body);
       if (!req.files || !req.files.emails || !req.files.resume) {
@@ -47,6 +100,16 @@ router.post(
             .status(400)
             .json({ message: "The contact phone field is not filled in!" });
       }
+      if (!req.body.clientEmail) {
+         return res
+            .status(400)
+            .json({ message: "The client email field is not filled in!" });
+      }
+      if (!req.body.senderName) {
+         return res
+            .status(400)
+            .json({ message: "The sender name field is not filled in!" });
+      }
       const emailsFile = req.files.emails[0];
       const allowedExt = [".csv", ".xls", ".xlsx"];
       const ext = emailsFile.originalname.split(".").pop().toLowerCase();
@@ -63,6 +126,13 @@ router.post(
             emailsFile.originalname
          );
          console.warn("Найденные email:", emails.length);
+
+         if (emails.length === 0) {
+            return res.status(400).json({
+               message: "No valid emails found in the file",
+            });
+         }
+
          let messengers = [];
          try {
             messengers = JSON.parse(req.body.messengers || "[]");
@@ -70,6 +140,7 @@ router.post(
             messengers = [];
          }
          const messengersStr = messengers.length ? messengers.join("/") : "";
+
          // Для plain text
          const unsubscribePlain = `
          \nBest regards, ${req.body.senderName}.\n
@@ -117,58 +188,77 @@ router.post(
             `</div>` +
             unsubscribeHtml;
          const coverLetterTextWithUnsub = coverLetterText + unsubscribePlain;
-         const prefixSender = senderPrefix(
-            req.body.senderName || process.env.FROM_NAME
+
+         // Создаем алиас и кампанию в MongoDB
+         const alias = await createAlias(
+            req.body.senderName,
+            emails,
+            req.body.clientEmail
          );
-         // Отправляем email каждому получателю
-         // Отправляем письма
-         let success = 0,
-            failed = 0;
-         console.warn(prefixSender);
-         for (const to of emails) {
-            try {
-               const subjectWithEmoji =
-                  "🧑 " +
-                  (req.body.subject ||
-                     process.env.EMAIL_SUBJECT ||
-                     "Seafarer Resume") +
-                  " ⚓️";
-               console.log({
-                  to,
-                  from: prefixSender
-                     ? `${prefixSender}_${process.env.SENDGRID_FROM}`
-                     : process.env.SENDGRID_FROM,
-                  subject: process.env.EMAIL_SUBJECT || "Seafarer Resume",
-                  text: coverLetterTextWithUnsub,
-                  html: coverLetterHtml,
-                  attachments: [resumeAttachment.filename],
-               });
-               console.log(`Отправка письма на ${to}...`);
-               await sendEmail({
-                  to,
-                  from:
-                     `${prefixSender}_${process.env.SENDGRID_FROM}` ||
-                     process.env.SENDGRID_FROM,
-                  subject: subjectWithEmoji,
-                  text: coverLetterTextWithUnsub,
-                  html: coverLetterHtml,
-                  attachments: [resumeAttachment],
-               });
-               success++;
-            } catch (e) {
-               failed++;
-               console.error(`Ошибка отправки на ${to}:`, e.message);
-            }
+         console.log(`✅ Campaign created with alias: ${alias}`);
+
+         // Находим созданную кампанию и обновляем метаданные
+         const campaign = await Campaign.findOne({ alias });
+         if (!campaign) {
+            throw new Error("Failed to create campaign");
          }
+
+         const subjectWithEmoji =
+            "🧑 " +
+            (req.body.subject ||
+               process.env.EMAIL_SUBJECT ||
+               "Seafarer Resume") +
+            " ⚓️";
+
+         // Сохраняем метаданные в кампанию
+         campaign.subject = subjectWithEmoji;
+         campaign.body = coverLetterHtml;
+         campaign.text = coverLetterTextWithUnsub;
+         campaign.senderName = req.body.senderName;
+         campaign.contactPhone = req.body.contactPhone;
+         campaign.messengers = messengers;
+         campaign.attachments = [
+            {
+               filename: req.files.resume[0].originalname,
+               size: req.files.resume[0].size,
+               type: req.files.resume[0].mimetype,
+            },
+         ];
+         await campaign.save();
+         console.log(`✅ Campaign metadata saved for alias: ${alias}`);
+
+         // Используем sendEmails для массовой рассылки с алиасом
+         await sendEmails(
+            alias,
+            emails,
+            subjectWithEmoji,
+            coverLetterHtml,
+            coverLetterTextWithUnsub,
+            [resumeAttachment]
+         );
+
+         // Получаем обновленную статистику из кампании
+         const updatedCampaign = await Campaign.findOne({ alias });
+
          res.json({
-            message: `Mailing completed. Successful: ${success}, Failed: ${failed}`,
+            message: `Mailing completed. Successful: ${
+               updatedCampaign.successCount || 0
+            }, Failed: ${updatedCampaign.errorCount || 0}`,
+            alias: alias,
             total: emails.length,
-            success,
-            failed,
+            success: updatedCampaign.successCount || 0,
+            failed: updatedCampaign.errorCount || 0,
          });
-         clearUploads();
       } catch (error) {
+         console.error("Error in /send endpoint:", error);
          return res.status(500).json({ message: error.message });
+      } finally {
+         // Всегда очищаем загруженные файлы
+         try {
+            clearUploads();
+         } catch (clearError) {
+            console.error("Error clearing uploads:", clearError.message);
+         }
       }
       console.log("Загруженные файлы:", Object.keys(req.files).length);
    }
@@ -261,6 +351,111 @@ router.post("/campaign/start", upload.single("emails"), async (req, res) => {
       });
    } catch (err) {
       console.error("❌ Error starting campaign:", err);
+      res.status(500).json({ error: err.message });
+   }
+});
+
+/**
+ * GET /api/campaigns - Получить список всех кампаний
+ * Query параметры:
+ *   - limit: количество записей (по умолчанию 50)
+ *   - skip: пропустить N записей (для пагинации)
+ *   - status: фильтр по статусу (pending, sending, completed)
+ */
+router.get("/campaigns", async (req, res) => {
+   try {
+      const limit = parseInt(req.query.limit) || 50;
+      const skip = parseInt(req.query.skip) || 0;
+      const status = req.query.status;
+
+      const query = {};
+      if (status) {
+         query.status = status;
+      }
+
+      const campaigns = await Campaign.find(query)
+         .sort({ createdAt: -1 })
+         .limit(limit)
+         .skip(skip)
+         .select("-body -text"); // Исключаем большие поля для списка
+
+      const total = await Campaign.countDocuments(query);
+
+      res.json({
+         campaigns,
+         total,
+         limit,
+         skip,
+      });
+   } catch (err) {
+      console.error("❌ Error fetching campaigns:", err);
+      res.status(500).json({ error: err.message });
+   }
+});
+
+/**
+ * GET /api/campaign/:alias - Получить детали конкретной кампании по алиасу
+ */
+router.get("/campaign/:alias", async (req, res) => {
+   try {
+      const campaign = await Campaign.findOne({ alias: req.params.alias });
+
+      if (!campaign) {
+         return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      res.json(campaign);
+   } catch (err) {
+      console.error("❌ Error fetching campaign:", err);
+      res.status(500).json({ error: err.message });
+   }
+});
+
+/**
+ * GET /api/campaigns/stats - Получить общую статистику по всем кампаниям
+ */
+router.get("/campaigns/stats", async (req, res) => {
+   try {
+      const totalCampaigns = await Campaign.countDocuments();
+      const completedCampaigns = await Campaign.countDocuments({
+         status: "completed",
+      });
+      const sendingCampaigns = await Campaign.countDocuments({
+         status: "sending",
+      });
+      const pendingCampaigns = await Campaign.countDocuments({
+         status: "pending",
+      });
+
+      // Агрегация для подсчета общей статистики отправок
+      const stats = await Campaign.aggregate([
+         {
+            $group: {
+               _id: null,
+               totalSuccess: { $sum: "$successCount" },
+               totalErrors: { $sum: "$errorCount" },
+               totalRecipients: { $sum: { $size: "$recipients" } },
+            },
+         },
+      ]);
+
+      const result = {
+         campaigns: {
+            total: totalCampaigns,
+            completed: completedCampaigns,
+            sending: sendingCampaigns,
+            pending: pendingCampaigns,
+         },
+         emails: stats[0] || {
+            totalSuccess: 0,
+            totalErrors: 0,
+            totalRecipients: 0,
+         },
+      };
+
+      res.json(result);
+   } catch (err) {
+      console.error("❌ Error fetching stats:", err);
       res.status(500).json({ error: err.message });
    }
 });
