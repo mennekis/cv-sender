@@ -5,13 +5,14 @@
 
 ## ⚙️ Стек
 
--  Backend: Node.js + Express
--  Database: MongoDB
--  Email: SendGrid API
--  Frontend: HTML + JavaScript
--  Reverse Proxy: Nginx
--  Containerization: Docker + Docker Compose
--  Process Manager: PM2
+-  **Backend**: Node.js + Express 5.x
+-  **Database**: MongoDB (Mongoose)
+-  **Email**: SendGrid API
+-  **Gmail Integration**: Google APIs (для обработки ответов)
+-  **Frontend**: Vanilla HTML/CSS/JS
+-  **Reverse Proxy**: Nginx
+-  **Containerization**: Docker + Docker Compose
+-  **Process Manager**: PM2
 
 ## 📁 Структура проекта
 
@@ -57,14 +58,15 @@ Sender_App2/
 │   │   └── style.css
 │   │
 │   ├── docker-compose.yml       # Docker Compose конфигурация
-│   ├── nginx.conf               # Nginx конфигурация
+│   ├── nginx.conf               # Nginx конфигурация (reverse proxy)
 │   ├── mime.types               # MIME типы для Nginx
-│   └── deploy.sh                # Скрипт деплоя на VPS
+│   ├── deploy.sh                # Скрипт деплоя на VPS
+│   ├── globaly.md               # Документация по email-связке
+│   ├── README.md                # Документация проекта
+│   └── PROJECT_CONTEX.md        # Контекст проекта
 │
-├── deploy.sh                    # Основной скрипт деплоя
-├── nginx.conf                   # Nginx конфигурация (для совместимости)
-├── mime.types                   # MIME типы (для совместимости)
-└── README.md                    # Документация
+├── README.md                    # Общая документация репозитория (этот файл)
+└── PROJECT_DESCRIPTION.md       # Подробное описание проекта
 ```
 
 ## 🚀 Быстрый старт
@@ -79,8 +81,9 @@ Sender_App2/
 
    ```bash
    cd backend
-   cp .env.example .env
-   # Отредактируйте .env и заполните необходимые переменные
+   # Создайте файл .env и заполните необходимые переменные
+   # Обязательные: SENDGRID_API_KEY, SENDGRID_FROM, MONGO_URI
+   # Подробнее см. PROJECT_DESCRIPTION.md
    ```
 
 3. Запустите через Docker Compose:
@@ -93,24 +96,40 @@ Sender_App2/
 
 ## 📝 Основные возможности
 
--  ✅ Массовая рассылка email с резюме
--  ✅ Управление кампаниями через MongoDB
--  ✅ Отслеживание статистики отправок
--  ✅ Защита от злоупотреблений (rate limiting)
--  ✅ Централизованная обработка ошибок
--  ✅ Валидация входных данных
--  ✅ Health check endpoint для мониторинга
+-  ✅ **Управление кампаниями** - создание, отслеживание статусов, статистика
+-  ✅ **Массовая рассылка email** - отправка резюме через SendGrid API
+-  ✅ **Хранение данных** - MongoDB для метаданных кампаний
+-  ✅ **Обработка файлов** - парсинг CSV/Excel с email адресами
+-  ✅ **Динамические отправители** - генерация уникальных email адресов
+   (client23@your_sendgrid_api_key)
+-  ✅ **Gmail интеграция** - обработка ответов на письма
+-  ✅ **Безопасность** - rate limiting, валидация данных
+-  ✅ **Мониторинг** - health check endpoint, логирование, статистика
 
 ## 🔧 Деплой
 
-Для деплоя на VPS используйте скрипт:
+Для деплоя на VPS используйте скрипт из директории `cv-sender/`:
 
 ```bash
+cd cv-sender
 ./deploy.sh
 ```
 
 Скрипт автоматически:
 
--  Копирует файлы из `cv-sender/` на сервер
--  Перезапускает Docker контейнеры
--  Применяет обновления
+-  Копирует файлы из `cv-sender/` на сервер через rsync
+-  Исключает `node_modules`, `.git`, `package-lock.json`
+-  Перезапускает Docker Compose контейнеры (MongoDB, Backend, Nginx)
+
+### Требования для деплоя:
+
+-  VPS с установленными Docker и Docker Compose
+-  Настроенный SSH доступ к серверу
+-  Файл `.env` в `cv-sender/backend/` с необходимыми переменными
+
+## 📚 Дополнительная документация
+
+-  **PROJECT_DESCRIPTION.md** - подробное описание проекта, архитектуры и
+   переменных окружения
+-  **cv-sender/globaly.md** - документация по email-связке (SendGrid + ImprovMX)
+-  **cv-sender/README.md** - документация внутри рабочей директории
