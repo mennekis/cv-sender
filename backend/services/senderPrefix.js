@@ -37,7 +37,7 @@ async function createAlias(clientName, recipients = [], clientEmail = null) {
    }
 
    // Генерируем базовый алиас из имени клиента
-   let alias = "client_" + clientName.toLowerCase().replace(/\s+/g, "_");
+   let alias = "seafarer_" + clientName.toLowerCase().replace(/\s+/g, "_");
 
    // Очищаем алиас от недопустимых символов
    alias = alias.replace(/[^a-z0-9_]/g, "");

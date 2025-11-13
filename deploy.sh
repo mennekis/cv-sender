@@ -4,7 +4,7 @@
 SERVER_USER="root"
 SERVER_HOST="your_vps_ip"
 REMOTE_PATH="/root/sender-app"
-LOCAL_PATH="./cv-sender/"
+LOCAL_PATH="./"
 
 echo "📤 Копируем файлы на сервер (без node_modules)..."
 

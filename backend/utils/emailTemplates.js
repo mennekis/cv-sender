@@ -56,11 +56,13 @@ function createEmailFooter(senderName, contactPhone, messengersStr = "") {
 
    return `
          <br>
-         <i>Best regards, ${safeName}</i>
+         <i>Best regards,</i>
          <br>
-         <phone style="color:#839;font-size:12px;">
+         <p style="color:#000;font-size:24px; font-weight:bold; margin-top:0; margin-bottom:0;"><i>${safeName}</i></p>
+         <br>
+         <p style="color:#2b2b2b;font-size:14px;">
             <i>Phone: ${safePhone}${messengers}</i>
-         </phone>
+         </p>
          <br>
           <hr>
           <p style="color:#888;font-size:12px;">

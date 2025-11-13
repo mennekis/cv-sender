@@ -6,7 +6,7 @@
 module.exports = {
    // Ограничения файлов
    FILE_LIMITS: {
-      MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
+      MAX_FILE_SIZE: 5 * 1024 * 1024, // 5MB
       MAX_FILES: 2, // Максимум 2 файла (resume + emails)
    },
 
@@ -17,8 +17,8 @@ module.exports = {
    // Настройки алиасов
    ALIAS: {
       MAX_ATTEMPTS: 100, // Максимум попыток найти уникальный алиас
-      PREFIX: "client_",
-      DEFAULT_FALLBACK: "client_user",
+      PREFIX: "seafarer_",
+      DEFAULT_FALLBACK: "seafarer_user",
    },
 
    // Статусы кампаний

@@ -63,10 +63,8 @@ async function sendEmailCampaign(req, res, next) {
 
       // Формирование email контента
       const coverLetterText = req.body.coverLetter;
-      const subjectWithEmoji =
-         "🧑 " +
-         (req.body.subject || constants.DEFAULTS.EMAIL_SUBJECT) +
-         " ⚓️";
+      const subjectWithoutEmoji =
+         req.body.subject || constants.DEFAULTS.EMAIL_SUBJECT;
 
       const emailHtml = createEmailHtml(
          req.body.subject || constants.DEFAULTS.EMAIL_SUBJECT,
@@ -97,28 +95,38 @@ async function sendEmailCampaign(req, res, next) {
       }
 
       // Сохранение метаданных кампании
-      campaign.subject = subjectWithEmoji;
+      campaign.subject = subjectWithoutEmoji;
       campaign.body = emailHtml;
       campaign.text = emailText;
       campaign.senderName = req.body.senderName;
       campaign.contactPhone = req.body.contactPhone;
       campaign.messengers = messengers;
+
+      // Явно создаем массив объектов для attachments
       campaign.attachments = [
          {
             filename: resumeFile.originalname,
-            size: resumeFile.size,
+            size: Number(resumeFile.size),
             type: resumeFile.mimetype,
          },
       ];
+
+      // Помечаем поле как измененное для Mongoose
+      campaign.markModified("attachments");
       await campaign.save();
 
       // Формирование вложения
       const resumeAttachment = makeAttachment(resumeFile);
 
       // Отправка писем
-      await sendEmails(alias, emails, subjectWithEmoji, emailHtml, emailText, [
-         resumeAttachment,
-      ]);
+      await sendEmails(
+         alias,
+         emails,
+         subjectWithoutEmoji,
+         emailHtml,
+         emailText,
+         [resumeAttachment]
+      );
 
       // Получение обновленной статистики
       const updatedCampaign = await Campaign.findOne({ alias });

@@ -48,13 +48,16 @@ const CampaignSchema = new mongoose.Schema({
       type: [String],
       default: [],
    },
-   attachments: [
-      {
-         filename: String,
-         size: Number,
-         type: String,
-      },
-   ],
+   attachments: {
+      type: [
+         {
+            filename: { type: String },
+            size: { type: Number },
+            type: { type: String },
+         },
+      ],
+      default: [],
+   },
    // Статистика отправок
    successCount: {
       type: Number,
