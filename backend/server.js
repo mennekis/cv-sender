@@ -65,8 +65,6 @@ if (process.env.ENABLE_GMAIL_REPLY_CHECKER === "true") {
    startEmailChecker();
 }
 
-// console.log(process.env.ADMIN_EMAIL + " admin email");
-
 app.listen(PORT, () => {
    console.log(`Server started on port ${PORT}`);
 });
