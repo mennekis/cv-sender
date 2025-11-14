@@ -3,7 +3,10 @@ const Campaign = require("../models/Campaign");
 const { sendEmail } = require("./sendgridService");
 
 // Настройка Gmail API
-const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
+const SCOPES = [
+   "https://www.googleapis.com/auth/gmail.readonly",
+   "https://www.googleapis.com/auth/gmail.modify", // Для пометки писем как прочитанных
+];
 const SERVICE_EMAIL =
    process.env.GMAIL_SERVICE_EMAIL || "your_service_email@example.com";
 const CHECK_INTERVAL = 12 * 60 * 60 * 1000; // 12 часов в миллисекундах
@@ -16,22 +19,60 @@ let checkInterval = null;
  */
 async function initGmail() {
    try {
-      const auth = new google.auth.GoogleAuth({
-         keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
-         scopes: SCOPES,
-      });
+      // Приоритет 1: OAuth2 с Client ID/Secret и Refresh Token
+      if (process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) {
+         const oauth2Client = new google.auth.OAuth2(
+            process.env.GMAIL_CLIENT_ID,
+            process.env.GMAIL_CLIENT_SECRET,
+            process.env.GMAIL_REDIRECT_URI ||
+               "http://localhost:3000/api/auth/google/callback"
+         );
 
-      // Альтернативный способ: через OAuth2 токен
-      if (process.env.GMAIL_ACCESS_TOKEN) {
-         const oauth2Client = new google.auth.OAuth2();
-         oauth2Client.setCredentials({
-            access_token: process.env.GMAIL_ACCESS_TOKEN,
-         });
+         // Если есть refresh token, используем его для автоматического обновления
+         if (process.env.GMAIL_REFRESH_TOKEN) {
+            oauth2Client.setCredentials({
+               refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+            });
+
+            // Автоматически обновляем access token при необходимости
+            try {
+               const { credentials } = await oauth2Client.refreshAccessToken();
+               oauth2Client.setCredentials(credentials);
+               console.log("✅ Access token refreshed successfully");
+            } catch (refreshError) {
+               console.warn(
+                  "⚠️  Failed to refresh access token:",
+                  refreshError.message
+               );
+               // Продолжаем с refresh_token, библиотека обновит токен автоматически при необходимости
+            }
+         } else if (process.env.GMAIL_ACCESS_TOKEN) {
+            // Fallback: используем access token напрямую (временное решение)
+            oauth2Client.setCredentials({
+               access_token: process.env.GMAIL_ACCESS_TOKEN,
+            });
+            console.warn(
+               "⚠️  Using access token directly. Consider using refresh token for automatic renewal."
+            );
+         } else {
+            throw new Error(
+               "GMAIL_REFRESH_TOKEN or GMAIL_ACCESS_TOKEN required when using OAuth2"
+            );
+         }
+
          gmail = google.gmail({ version: "v1", auth: oauth2Client });
-      } else if (auth) {
+      }
+      // Приоритет 2: Service Account
+      else if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
+         const auth = new google.auth.GoogleAuth({
+            keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
+            scopes: SCOPES,
+         });
          gmail = google.gmail({ version: "v1", auth });
       } else {
-         throw new Error("Gmail authentication not configured");
+         throw new Error(
+            "Gmail authentication not configured. Set GMAIL_CLIENT_ID/GMAIL_CLIENT_SECRET or GOOGLE_SERVICE_ACCOUNT_KEY_FILE"
+         );
       }
 
       console.log("✅ Gmail API initialized");
@@ -43,14 +84,14 @@ async function initGmail() {
 
 /**
  * Извлекает alias из email адреса
- * @param {string} email - Email адрес вида client_X@your_sendgrid_api_key
+ * @param {string} email - Email адрес вида seafarer_X@your_sendgrid_api_key
  * @returns {string|null} - Извлеченный alias или null
  */
 function extractAliasFromEmail(email) {
    if (!email || typeof email !== "string") return null;
 
-   // Ищем паттерн client_*@your_sendgrid_api_key
-   const match = email.match(/^(client_[^@]+)@seafarer-cv\.com$/i);
+   // Ищем паттерн seafarer_*@your_sendgrid_api_key
+   const match = email.match(/^(seafarer_[^@]+)@seafarer-cv\.com$/i);
    return match ? match[1] : null;
 }
 

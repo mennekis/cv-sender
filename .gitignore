@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Google OAuth credentials (sensitive)
+client_secret_*.json
+
 # Dependencies
 node_modules/
 npm-debug.log*
