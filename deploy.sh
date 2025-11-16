@@ -13,6 +13,14 @@ rsync -avz --delete \
   --exclude "node_modules" \
   --exclude "package-lock.json" \
   --exclude "deploy.sh" \
+  --exclude "test-*.js" \
+  --exclude "check-*.js" \
+  --exclude "diagnose-*.js" \
+  --exclude "find-*.js" \
+  --exclude "get-refresh-token.js" \
+  --exclude "client_secret_*.json" \
+  --exclude "*_REPORT.md" \
+  --exclude "CHECK_VPS_LOGS.md" \
   $LOCAL_PATH ${SERVER_USER}@${SERVER_HOST}:${REMOTE_PATH}
 
 echo "✅ Файлы скопированы."

@@ -59,8 +59,7 @@ function createEmailFooter(senderName, contactPhone, messengersStr = "") {
          <i>Best regards,</i>
          <br>
          <p style="color:#000;font-size:24px; font-weight:bold; margin-top:0; margin-bottom:0;"><i>${safeName}</i></p>
-         <br>
-         <p style="color:#2b2b2b;font-size:14px;">
+         <p style="color:#2b2b2b;font-size:18px; margin-top:0; margin-bottom:0;">
             <i>Phone: ${safePhone}${messengers}</i>
          </p>
          <br>
