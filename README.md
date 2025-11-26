@@ -7,9 +7,16 @@
 
 - Backend: Node.js + Express
 - Email: SendGrid API
+- Gmail API: Google APIs для обработки ответов
 - Frontend: HTML + JS
 - Хранилище: Cloudflare + локальный сервер или VPS
-- Вспомогательные библиотеки: `multer`, `csv-parse`, `nodemailer`, `dotenv`
+- Вспомогательные библиотеки: `multer`, `csv-parse`, `googleapis`, `dotenv`
+
+## 🆕 Новые возможности
+
+- ✅ **Автоматическое обновление Gmail токенов** - система автоматически обновляет access token при истечении
+- ✅ **Уведомления администратора** - автоматические email уведомления на `mennekis@gmail.com` при проблемах с токенами
+- ✅ **Обработка ошибок токена** - автоматическое обнаружение и обработка ошибок `invalid_grant`
 
 ---
 
@@ -46,3 +53,11 @@ project-root/
 └── package.json
 
 </code> </pre>
+
+## 📚 Документация
+
+-  **TROUBLESHOOTING.md** - Решение проблем с пересылкой писем и Gmail токенами
+-  **GMAIL_TOKEN_MANAGEMENT.md** - Подробное руководство по управлению Gmail
+   токенами
+-  **CRON_SETUP.md** - Настройка cron-задач для резервной обработки
+-  **PROJECT_ANALYSIS.md** - Детальный анализ архитектуры проекта

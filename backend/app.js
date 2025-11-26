@@ -21,10 +21,19 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Rate limiting для всех API endpoints
 app.use("/api/", apiLimiter);
 
+// Health check endpoint (должен быть ДО маршрутов, чтобы nginx rewrite работал)
+app.get("/health", (req, res) => {
+   res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+   });
+});
+
 // Маршруты
 app.use("/", mailRoutes);
 
-// Health check endpoint
+// Health check endpoint для прямого доступа (без nginx)
 app.get("/api/health", (req, res) => {
    res.json({
       status: "ok",

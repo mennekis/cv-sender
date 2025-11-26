@@ -14,9 +14,9 @@ const CampaignSchema = new mongoose.Schema({
       type: String,
       default: null,
    },
-   recipients: {
-      type: [String],
-      default: [],
+   recipientsCount: {
+      type: Number,
+      default: 0,
    },
    status: {
       type: String,

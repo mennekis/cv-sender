@@ -2,6 +2,8 @@ const { google } = require("googleapis");
 const Campaign = require("../models/Campaign");
 const { sendEmail } = require("./sendgridService");
 const mongoose = require("mongoose");
+const fs = require("fs");
+const path = require("path");
 
 // Настройка Gmail API
 const SCOPES = [
@@ -14,6 +16,15 @@ const CHECK_INTERVAL = 5 * 60 * 1000; // 5 минут в миллисекунд�
 
 let gmail = null;
 let checkInterval = null;
+let oauth2Client = null; // Сохраняем ссылку на OAuth2 клиент для переинициализации
+let lastTokenErrorNotification = null; // Время последнего уведомления об ошибке токена
+let lastRefreshTokenValue = null; // Последнее значение refresh token для отслеживания изменений
+let tokenCheckInterval = null; // Интервал для проверки токена
+let lastProactiveRefresh = null; // Время последнего проактивного обновления токена
+const TOKEN_ERROR_NOTIFICATION_INTERVAL = 60 * 60 * 1000; // 1 час между уведомлениями
+const TOKEN_CHECK_INTERVAL = 30 * 60 * 1000; // Проверка токена каждые 30 минут
+const PROACTIVE_REFRESH_INTERVAL = 7 * 24 * 60 * 60 * 1000; // Проактивное обновление раз в неделю (7 дней)
+const ADMIN_EMAIL = "mennekis@gmail.com"; // Email для уведомлений об ошибках токена
 
 // Схема для отслеживания обработанных писем (защита от дубликатов)
 const ProcessedEmailSchema = new mongoose.Schema(
@@ -27,13 +38,441 @@ const ProcessedEmailSchema = new mongoose.Schema(
 let ProcessedEmail = null;
 
 /**
+ * Проверяет, является ли ошибка ошибкой истечения токена
+ */
+function isTokenExpiredError(error) {
+   if (!error) return false;
+   const errorMessage = error.message || error.toString() || "";
+   return (
+      errorMessage.includes("invalid_grant") ||
+      errorMessage.includes("Token has been expired") ||
+      errorMessage.includes("invalid_token") ||
+      (error.response &&
+         (error.response.data?.error === "invalid_grant" ||
+            error.response.data?.error_description?.includes(
+               "Token has been expired"
+            )))
+   );
+}
+
+/**
+ * Отправляет уведомление администратору об ошибке токена
+ * Защита от спама: отправляет не чаще раза в час
+ */
+async function sendTokenErrorNotification(errorDetails = {}) {
+   const now = Date.now();
+
+   // Проверяем, не отправляли ли мы уведомление недавно
+   if (
+      lastTokenErrorNotification &&
+      now - lastTokenErrorNotification < TOKEN_ERROR_NOTIFICATION_INTERVAL
+   ) {
+      const minutesSinceLastNotification = Math.floor(
+         (now - lastTokenErrorNotification) / (60 * 1000)
+      );
+      console.log(
+         `⏭️  Skipping token error notification (sent ${minutesSinceLastNotification} minutes ago)`
+      );
+      return;
+   }
+
+   try {
+      const subject = "⚠️ Gmail Token Error - Automatic Refresh Failed";
+      const text = `
+ВНИМАНИЕ: Проблема с Gmail токеном!
+
+Gmail API токен истек и автоматическое обновление не сработало.
+
+Детали ошибки:
+${errorDetails.message || "Refresh token expired or invalid"}
+
+═══════════════════════════════════════════════════════════════
+ДЕЙСТВИЯ ДЛЯ ИСПРАВЛЕНИЯ:
+═══════════════════════════════════════════════════════════════
+
+1. Подключитесь к VPS:
+   ssh root@your_vps_ip
+
+2. Перейдите в директорию backend:
+   cd /root/sender-app/backend
+
+3. Запустите скрипт получения нового токена:
+   docker-compose exec backend node get-refresh-token.js
+   
+   Или если скрипт на хосте:
+   node get-refresh-token.js
+
+4. Следуйте инструкциям скрипта:
+   - Откройте URL в браузере
+   - Авторизуйтесь в Google
+   - Скопируйте код авторизации
+   - Вставьте код в терминал
+   - Скрипт автоматически обновит .env файл
+
+5. Перезапустите контейнер:
+   cd /root/sender-app
+   docker-compose restart backend
+
+6. Проверьте логи, что все работает:
+   docker-compose logs --tail=50 backend | grep -i "token\|email checker"
+
+═══════════════════════════════════════════════════════════════
+ПРОВЕРКА ЛОГОВ (если нужно диагностировать проблему):
+═══════════════════════════════════════════════════════════════
+
+Просмотр последних логов:
+  docker-compose logs --tail=100 backend
+
+Поиск ошибок токена:
+  docker-compose logs backend | grep -i "token\|refresh\|invalid_grant"
+
+Проверка статуса сервисов:
+  docker-compose ps
+  docker-compose logs backend | grep "Email checker started"
+
+Проверка текущего токена в .env:
+  docker-compose exec backend grep GMAIL_REFRESH_TOKEN .env
+
+═══════════════════════════════════════════════════════════════
+ИНФОРМАЦИЯ:
+═══════════════════════════════════════════════════════════════
+
+Время ошибки: ${new Date().toISOString()}
+Сервер: ${process.env.SERVER_NAME || "VPS (your_vps_ip)"}
+
+⚠️ ВАЖНО: Проверка ответов на письма временно не работает до обновления токена.
+Система автоматически возобновит работу после обновления GMAIL_REFRESH_TOKEN.
+      `.trim();
+
+      const html = `
+<h2 style="color: #d32f2f;">⚠️ ВНИМАНИЕ: Проблема с Gmail токеном!</h2>
+<p>Gmail API токен истек и автоматическое обновление не сработало.</p>
+
+<h3>Детали ошибки:</h3>
+<p style="background: #ffebee; padding: 10px; border-left: 4px solid #d32f2f;"><strong>${
+         errorDetails.message || "Refresh token expired or invalid"
+      }</strong></p>
+
+<h3 style="color: #1976d2;">📋 Действия для исправления:</h3>
+<ol style="line-height: 1.8;">
+   <li><strong>Подключитесь к VPS:</strong><br>
+       <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 3px;">ssh root@your_vps_ip</code>
+   </li>
+   <li><strong>Перейдите в директорию backend:</strong><br>
+       <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 3px;">cd /root/sender-app/backend</code>
+   </li>
+   <li><strong>Запустите скрипт получения нового токена:</strong><br>
+       <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 3px;">docker-compose exec backend node get-refresh-token.js</code><br>
+       <small>Или если скрипт на хосте: <code>node get-refresh-token.js</code></small>
+   </li>
+   <li><strong>Следуйте инструкциям скрипта:</strong>
+       <ul>
+          <li>Откройте URL в браузере</li>
+          <li>Авторизуйтесь в Google</li>
+          <li>Скопируйте код авторизации</li>
+          <li>Вставьте код в терминал</li>
+          <li>Скрипт автоматически обновит .env файл</li>
+       </ul>
+   </li>
+   <li><strong>Перезапустите контейнер:</strong><br>
+       <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 3px;">cd /root/sender-app</code><br>
+       <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 3px;">docker-compose restart backend</code>
+   </li>
+   <li><strong>Проверьте логи, что все работает:</strong><br>
+       <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 3px;">docker-compose logs --tail=50 backend | grep -i "token\\|email checker"</code>
+   </li>
+</ol>
+
+<h3 style="color: #1976d2;">🔍 Проверка логов (если нужно диагностировать проблему):</h3>
+<div style="background: #f5f5f5; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 12px;">
+<strong>Просмотр последних логов:</strong><br>
+docker-compose logs --tail=100 backend<br><br>
+
+<strong>Поиск ошибок токена:</strong><br>
+docker-compose logs backend | grep -i "token\\|refresh\\|invalid_grant"<br><br>
+
+<strong>Проверка статуса сервисов:</strong><br>
+docker-compose ps<br>
+docker-compose logs backend | grep "Email checker started"<br><br>
+
+<strong>Проверка текущего токена в .env:</strong><br>
+docker-compose exec backend grep GMAIL_REFRESH_TOKEN .env
+</div>
+
+<h3 style="color: #1976d2;">ℹ️ Информация:</h3>
+<p><strong>Время ошибки:</strong> ${new Date().toISOString()}</p>
+<p><strong>Сервер:</strong> ${
+         process.env.SERVER_NAME || "VPS (your_vps_ip)"
+      }</p>
+
+<p style="color: #d32f2f; font-weight: bold; padding: 10px; background: #ffebee; border-left: 4px solid #d32f2f;">
+⚠️ ВАЖНО: Проверка ответов на письма временно не работает до обновления токена.<br>
+Система автоматически возобновит работу после обновления GMAIL_REFRESH_TOKEN.
+</p>
+      `.trim();
+
+      await sendEmail({
+         to: ADMIN_EMAIL,
+         from: process.env.SENDGRID_FROM || SERVICE_EMAIL,
+         subject,
+         text,
+         html,
+      });
+
+      lastTokenErrorNotification = now;
+      console.log(`✅ Token error notification sent to ${ADMIN_EMAIL}`);
+   } catch (err) {
+      console.error(`❌ Failed to send token error notification:`, err.message);
+      // Не пробрасываем ошибку дальше, чтобы не прерывать основную работу
+   }
+}
+
+/**
+ * Перезагружает переменные окружения из .env файла
+ */
+function reloadEnvVariables() {
+   try {
+      const envPath = path.join(__dirname, "../.env");
+      if (fs.existsSync(envPath)) {
+         const envContent = fs.readFileSync(envPath, "utf8");
+         const envLines = envContent.split("\n");
+
+         for (const line of envLines) {
+            const trimmedLine = line.trim();
+            // Пропускаем комментарии и пустые строки
+            if (!trimmedLine || trimmedLine.startsWith("#")) {
+               continue;
+            }
+
+            const equalIndex = trimmedLine.indexOf("=");
+            if (equalIndex > 0) {
+               const key = trimmedLine.substring(0, equalIndex).trim();
+               let value = trimmedLine.substring(equalIndex + 1).trim();
+
+               // Удаляем кавычки если есть
+               if (
+                  (value.startsWith('"') && value.endsWith('"')) ||
+                  (value.startsWith("'") && value.endsWith("'"))
+               ) {
+                  value = value.slice(1, -1);
+               }
+
+               // Обновляем только Gmail-related переменные
+               if (key.startsWith("GMAIL_")) {
+                  process.env[key] = value;
+               }
+            }
+         }
+         return true;
+      }
+   } catch (err) {
+      console.warn("⚠️  Failed to reload .env file:", err.message);
+   }
+   return false;
+}
+
+/**
+ * Проверяет, изменился ли refresh token в переменных окружения
+ * и переинициализирует Gmail API если нужно
+ */
+async function checkAndReinitIfTokenChanged() {
+   // Перезагружаем переменные окружения из .env файла
+   reloadEnvVariables();
+
+   const currentToken = process.env.GMAIL_REFRESH_TOKEN;
+
+   // Если токен изменился, переинициализируем
+   if (currentToken && currentToken !== lastRefreshTokenValue) {
+      console.log("🔄 Refresh token changed, reinitializing Gmail API...");
+      lastRefreshTokenValue = currentToken;
+      try {
+         await initGmail();
+         console.log("✅ Gmail API reinitialized with new refresh token");
+         return true;
+      } catch (err) {
+         console.error("❌ Failed to reinitialize Gmail API:", err.message);
+         return false;
+      }
+   }
+
+   return false;
+}
+
+/**
+ * Периодически проверяет валидность токена и пытается обновить его
+ * Также выполняет проактивное обновление раз в неделю для предотвращения истечения refresh token
+ */
+async function periodicTokenCheck() {
+   try {
+      // Проверяем, изменился ли refresh token
+      await checkAndReinitIfTokenChanged();
+
+      // Если Gmail API инициализирован, проверяем валидность токена
+      if (gmail && oauth2Client && process.env.GMAIL_REFRESH_TOKEN) {
+         const now = Date.now();
+         const shouldProactivelyRefresh =
+            !lastProactiveRefresh ||
+            now - lastProactiveRefresh >= PROACTIVE_REFRESH_INTERVAL;
+
+         try {
+            // Проактивное обновление: обновляем access token раз в неделю,
+            // даже если он еще не истек, чтобы сбросить таймер неактивности refresh token
+            if (shouldProactivelyRefresh) {
+               console.log(
+                  "🔄 Proactive token refresh (weekly maintenance to prevent refresh token expiration)..."
+               );
+               const { credentials } = await oauth2Client.refreshAccessToken();
+               oauth2Client.setCredentials(credentials);
+               gmail = google.gmail({ version: "v1", auth: oauth2Client });
+               lastProactiveRefresh = now;
+               console.log(
+                  "✅ Proactive access token refresh completed (refresh token activity timer reset)"
+               );
+            } else {
+               // Обычная проверка: пытаемся обновить access token для проверки валидности refresh token
+               const { credentials } = await oauth2Client.refreshAccessToken();
+               oauth2Client.setCredentials(credentials);
+               gmail = google.gmail({ version: "v1", auth: oauth2Client });
+               // Если успешно, токен валиден
+            }
+         } catch (checkError) {
+            if (isTokenExpiredError(checkError)) {
+               console.warn(
+                  "⚠️  Refresh token validation failed during periodic check"
+               );
+               // Пытаемся переинициализировать на случай, если токен был обновлен
+               const tokenUpdated = await checkAndReinitIfTokenChanged();
+
+               // Если токен не был обновлен и это ошибка истечения, отправляем уведомление
+               if (!tokenUpdated) {
+                  await sendTokenErrorNotification({
+                     message:
+                        checkError.message ||
+                        "Refresh token expired during periodic check",
+                     error: checkError,
+                  });
+               }
+            } else {
+               // Если это не ошибка истечения токена, логируем предупреждение
+               console.warn(
+                  "⚠️  Error during token check:",
+                  checkError.message
+               );
+            }
+         }
+      }
+   } catch (err) {
+      // Игнорируем ошибки периодической проверки, чтобы не прерывать работу
+      console.warn("⚠️  Error during periodic token check:", err.message);
+   }
+}
+
+/**
+ * Обновляет access token через refresh token
+ */
+async function refreshAccessToken() {
+   if (!oauth2Client || !process.env.GMAIL_REFRESH_TOKEN) {
+      return false;
+   }
+
+   try {
+      const { credentials } = await oauth2Client.refreshAccessToken();
+      oauth2Client.setCredentials(credentials);
+      // Обновляем gmail клиент с новыми credentials
+      gmail = google.gmail({ version: "v1", auth: oauth2Client });
+      console.log("✅ Access token refreshed successfully");
+
+      // Обновляем последнее известное значение токена
+      lastRefreshTokenValue = process.env.GMAIL_REFRESH_TOKEN;
+
+      // Обновляем время последнего проактивного обновления
+      // (даже если это не было проактивным обновлением, это сбрасывает таймер неактивности)
+      lastProactiveRefresh = Date.now();
+
+      return true;
+   } catch (refreshError) {
+      if (isTokenExpiredError(refreshError)) {
+         console.error(
+            "❌ Refresh token expired or invalid. Attempting to check for updated token..."
+         );
+
+         // Проверяем, не обновился ли refresh token в .env
+         const tokenUpdated = await checkAndReinitIfTokenChanged();
+
+         if (tokenUpdated) {
+            console.log(
+               "✅ Refresh token was updated, retrying access token refresh..."
+            );
+            // Пытаемся снова обновить access token с новым refresh token
+            try {
+               const { credentials } = await oauth2Client.refreshAccessToken();
+               oauth2Client.setCredentials(credentials);
+               gmail = google.gmail({ version: "v1", auth: oauth2Client });
+               console.log(
+                  "✅ Access token refreshed successfully with new refresh token"
+               );
+               // Обновляем время последнего проактивного обновления
+               lastProactiveRefresh = Date.now();
+               return true;
+            } catch (retryError) {
+               console.error(
+                  "❌ Failed to refresh even with updated token:",
+                  retryError.message
+               );
+            }
+         }
+
+         console.error("   Please update GMAIL_REFRESH_TOKEN in .env file");
+         console.error(
+            "   Run: node get-refresh-token.js to get a new refresh token"
+         );
+
+         // Отправляем уведомление администратору
+         await sendTokenErrorNotification({
+            message: refreshError.message || "Refresh token expired or invalid",
+            error: refreshError,
+         });
+      } else {
+         console.warn(
+            "⚠️  Failed to refresh access token:",
+            refreshError.message
+         );
+      }
+      return false;
+   }
+}
+
+/**
+ * Обрабатывает ошибку Gmail API и пытается восстановить соединение
+ */
+async function handleGmailError(error, operation = "Gmail API operation") {
+   if (isTokenExpiredError(error)) {
+      console.warn(
+         `⚠️  Token expired during ${operation}. Attempting to refresh...`
+      );
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+         console.log(`✅ Token refreshed. Retrying ${operation}...`);
+         return true; // Успешно обновили, можно повторить операцию
+      } else {
+         console.error(
+            `❌ Failed to refresh token. ${operation} cannot be completed.`
+         );
+         // Уведомление уже отправлено в refreshAccessToken, если токен истек
+         return false; // Не удалось обновить
+      }
+   }
+   return false; // Не ошибка токена
+}
+
+/**
  * Инициализация Gmail API
  */
 async function initGmail() {
    try {
       // Приоритет 1: OAuth2 с Client ID/Secret и Refresh Token
       if (process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) {
-         const oauth2Client = new google.auth.OAuth2(
+         oauth2Client = new google.auth.OAuth2(
             process.env.GMAIL_CLIENT_ID,
             process.env.GMAIL_CLIENT_SECRET,
             process.env.GMAIL_REDIRECT_URI ||
@@ -46,16 +485,34 @@ async function initGmail() {
                refresh_token: process.env.GMAIL_REFRESH_TOKEN,
             });
 
+            // Сохраняем текущее значение токена для отслеживания изменений
+            lastRefreshTokenValue = process.env.GMAIL_REFRESH_TOKEN;
+
             // Автоматически обновляем access token при необходимости
             try {
                const { credentials } = await oauth2Client.refreshAccessToken();
                oauth2Client.setCredentials(credentials);
                // console.log("✅ Access token refreshed successfully"); // Для отладки
             } catch (refreshError) {
-               console.warn(
-                  "⚠️  Failed to refresh access token:",
-                  refreshError.message
-               );
+               if (isTokenExpiredError(refreshError)) {
+                  console.error(
+                     "❌ Refresh token expired or invalid during initialization."
+                  );
+                  console.error(
+                     "   Please update GMAIL_REFRESH_TOKEN in .env file"
+                  );
+                  console.error(
+                     "   Run: node get-refresh-token.js to get a new refresh token"
+                  );
+                  console.log(
+                     "   System will automatically detect when token is updated"
+                  );
+               } else {
+                  console.warn(
+                     "⚠️  Failed to refresh access token:",
+                     refreshError.message
+                  );
+               }
                // Продолжаем с refresh_token, библиотека обновит токен автоматически при необходимости
             }
          } else if (process.env.GMAIL_ACCESS_TOKEN) {
@@ -132,11 +589,30 @@ async function getUnreadEmails() {
          twentyFourHoursAgo.getTime() / 1000
       )} is:unread`;
 
-      const response = await gmail.users.messages.list({
-         userId: "me",
-         q: query,
-         maxResults: 100, // Увеличиваем лимит, чтобы не пропустить письма
-      });
+      let response;
+      try {
+         response = await gmail.users.messages.list({
+            userId: "me",
+            q: query,
+            maxResults: 100, // Увеличиваем лимит, чтобы не пропустить письма
+         });
+      } catch (error) {
+         // Пытаемся обработать ошибку токена
+         const shouldRetry = await handleGmailError(
+            error,
+            "fetching unread emails"
+         );
+         if (shouldRetry) {
+            // Повторяем попытку после обновления токена
+            response = await gmail.users.messages.list({
+               userId: "me",
+               q: query,
+               maxResults: 100,
+            });
+         } else {
+            throw error; // Пробрасываем ошибку дальше, если не удалось обновить токен
+         }
+      }
 
       const allMessages = response.data.messages || [];
 
@@ -144,18 +620,44 @@ async function getUnreadEmails() {
       const filteredMessages = [];
       for (const messageRef of allMessages) {
          try {
-            const message = await gmail.users.messages.get({
-               userId: "me",
-               id: messageRef.id,
-               format: "metadata",
-               metadataHeaders: [
-                  "To",
-                  "Reply-To",
-                  "X-Original-To",
-                  "Delivered-To",
-                  "Envelope-To",
-               ],
-            });
+            let message;
+            try {
+               message = await gmail.users.messages.get({
+                  userId: "me",
+                  id: messageRef.id,
+                  format: "metadata",
+                  metadataHeaders: [
+                     "To",
+                     "Reply-To",
+                     "X-Original-To",
+                     "Delivered-To",
+                     "Envelope-To",
+                  ],
+               });
+            } catch (error) {
+               // Пытаемся обработать ошибку токена
+               const shouldRetry = await handleGmailError(
+                  error,
+                  `fetching message ${messageRef.id}`
+               );
+               if (shouldRetry) {
+                  // Повторяем попытку после обновления токена
+                  message = await gmail.users.messages.get({
+                     userId: "me",
+                     id: messageRef.id,
+                     format: "metadata",
+                     metadataHeaders: [
+                        "To",
+                        "Reply-To",
+                        "X-Original-To",
+                        "Delivered-To",
+                        "Envelope-To",
+                     ],
+                  });
+               } else {
+                  throw error; // Пробрасываем ошибку дальше
+               }
+            }
 
             const headers = message.data.payload.headers || [];
             const to = headers.find((h) => h.name === "To")?.value || "";
@@ -211,11 +713,30 @@ async function getRecentReadEmails() {
          twentyFourHoursAgo.getTime() / 1000
       )} -is:unread`;
 
-      const response = await gmail.users.messages.list({
-         userId: "me",
-         q: query,
-         maxResults: 100, // Увеличиваем лимит, чтобы не пропустить письма
-      });
+      let response;
+      try {
+         response = await gmail.users.messages.list({
+            userId: "me",
+            q: query,
+            maxResults: 100, // Увеличиваем лимит, чтобы не пропустить письма
+         });
+      } catch (error) {
+         // Пытаемся обработать ошибку токена
+         const shouldRetry = await handleGmailError(
+            error,
+            "fetching recent read emails"
+         );
+         if (shouldRetry) {
+            // Повторяем попытку после обновления токена
+            response = await gmail.users.messages.list({
+               userId: "me",
+               q: query,
+               maxResults: 100,
+            });
+         } else {
+            throw error; // Пробрасываем ошибку дальше, если не удалось обновить токен
+         }
+      }
 
       const allMessages = response.data.messages || [];
 
@@ -223,18 +744,44 @@ async function getRecentReadEmails() {
       const filteredMessages = [];
       for (const messageRef of allMessages) {
          try {
-            const message = await gmail.users.messages.get({
-               userId: "me",
-               id: messageRef.id,
-               format: "metadata",
-               metadataHeaders: [
-                  "To",
-                  "Reply-To",
-                  "X-Original-To",
-                  "Delivered-To",
-                  "Envelope-To",
-               ],
-            });
+            let message;
+            try {
+               message = await gmail.users.messages.get({
+                  userId: "me",
+                  id: messageRef.id,
+                  format: "metadata",
+                  metadataHeaders: [
+                     "To",
+                     "Reply-To",
+                     "X-Original-To",
+                     "Delivered-To",
+                     "Envelope-To",
+                  ],
+               });
+            } catch (error) {
+               // Пытаемся обработать ошибку токена
+               const shouldRetry = await handleGmailError(
+                  error,
+                  `fetching recent read message ${messageRef.id}`
+               );
+               if (shouldRetry) {
+                  // Повторяем попытку после обновления токена
+                  message = await gmail.users.messages.get({
+                     userId: "me",
+                     id: messageRef.id,
+                     format: "metadata",
+                     metadataHeaders: [
+                        "To",
+                        "Reply-To",
+                        "X-Original-To",
+                        "Delivered-To",
+                        "Envelope-To",
+                     ],
+                  });
+               } else {
+                  throw error; // Пробрасываем ошибку дальше
+               }
+            }
 
             const headers = message.data.payload.headers || [];
             const to = headers.find((h) => h.name === "To")?.value || "";
@@ -320,11 +867,30 @@ async function getEmailDetails(messageId) {
    }
 
    try {
-      const response = await gmail.users.messages.get({
-         userId: "me",
-         id: messageId,
-         format: "full",
-      });
+      let response;
+      try {
+         response = await gmail.users.messages.get({
+            userId: "me",
+            id: messageId,
+            format: "full",
+         });
+      } catch (error) {
+         // Пытаемся обработать ошибку токена
+         const shouldRetry = await handleGmailError(
+            error,
+            `fetching email details ${messageId}`
+         );
+         if (shouldRetry) {
+            // Повторяем попытку после обновления токена
+            response = await gmail.users.messages.get({
+               userId: "me",
+               id: messageId,
+               format: "full",
+            });
+         } else {
+            throw error; // Пробрасываем ошибку дальше
+         }
+      }
 
       return response.data;
    } catch (err) {
@@ -471,13 +1037,32 @@ ${emailData.html || emailData.text}
 
       // Помечаем письмо как прочитанное в Gmail
       if (gmail) {
-         await gmail.users.messages.modify({
-            userId: "me",
-            id: messageId,
-            requestBody: {
-               removeLabelIds: ["UNREAD"],
-            },
-         });
+         try {
+            await gmail.users.messages.modify({
+               userId: "me",
+               id: messageId,
+               requestBody: {
+                  removeLabelIds: ["UNREAD"],
+               },
+            });
+         } catch (error) {
+            // Пытаемся обработать ошибку токена
+            const shouldRetry = await handleGmailError(
+               error,
+               `marking email ${messageId} as read`
+            );
+            if (shouldRetry) {
+               // Повторяем попытку после обновления токена
+               await gmail.users.messages.modify({
+                  userId: "me",
+                  id: messageId,
+                  requestBody: {
+                     removeLabelIds: ["UNREAD"],
+                  },
+               });
+            }
+            // Если не удалось, просто логируем, но не прерываем обработку
+         }
       }
    } catch (err) {
       console.error(`❌ Error processing email ${messageId}:`, err.message);
@@ -507,7 +1092,10 @@ async function checkAndProcessReplies() {
       try {
          unreadMessages = await getUnreadEmails();
       } catch (err) {
-         console.error("❌ Error fetching unread emails:", err.message);
+         // Логируем только если это не ошибка токена (она уже обработана в getUnreadEmails)
+         if (!isTokenExpiredError(err)) {
+            console.error("❌ Error fetching unread emails:", err.message);
+         }
          // Продолжаем работу, даже если не удалось получить непрочитанные
       }
 
@@ -534,7 +1122,10 @@ async function checkAndProcessReplies() {
       try {
          recentReadMessages = await getRecentReadEmails();
       } catch (err) {
-         console.error("❌ Error fetching recent read emails:", err.message);
+         // Логируем только если это не ошибка токена (она уже обработана в getRecentReadEmails)
+         if (!isTokenExpiredError(err)) {
+            console.error("❌ Error fetching recent read emails:", err.message);
+         }
          // Продолжаем работу, даже если не удалось получить прочитанные
       }
 
@@ -592,10 +1183,27 @@ function startEmailChecker() {
       console.error("❌ Initial email check failed:", err.message);
    });
 
-   // Затем каждые 12 часов
+   // Затем каждые 5 минут (CHECK_INTERVAL)
    checkInterval = setInterval(() => {
       checkAndProcessReplies();
    }, CHECK_INTERVAL);
+
+   // Запускаем периодическую проверку токена
+   if (!tokenCheckInterval) {
+      // Устанавливаем начальное время для проактивного обновления (через неделю)
+      if (!lastProactiveRefresh) {
+         lastProactiveRefresh = Date.now();
+      }
+      tokenCheckInterval = setInterval(() => {
+         periodicTokenCheck();
+      }, TOKEN_CHECK_INTERVAL);
+      const proactiveDays = PROACTIVE_REFRESH_INTERVAL / (24 * 60 * 60 * 1000);
+      console.log(
+         `✅ Token checker started (checking every ${
+            TOKEN_CHECK_INTERVAL / 1000 / 60
+         } minutes, proactive refresh every ${proactiveDays} days)`
+      );
+   }
 
    const intervalMinutes = CHECK_INTERVAL / 1000 / 60;
    const intervalHours = intervalMinutes / 60;
@@ -614,6 +1222,12 @@ function stopEmailChecker() {
       clearInterval(checkInterval);
       checkInterval = null;
       console.log("✅ Email checker stopped");
+   }
+
+   if (tokenCheckInterval) {
+      clearInterval(tokenCheckInterval);
+      tokenCheckInterval = null;
+      console.log("✅ Token checker stopped");
    }
 }
 

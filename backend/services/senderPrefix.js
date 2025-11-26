@@ -74,7 +74,7 @@ async function createAlias(clientName, recipients = [], clientEmail = null) {
       const campaign = new Campaign({
          clientName,
          alias: uniqueAlias,
-         recipients,
+         recipientsCount: recipients.length,
          clientEmail,
          status: "pending",
       });

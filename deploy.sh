@@ -21,6 +21,7 @@ rsync -avz --delete \
   --exclude "client_secret_*.json" \
   --exclude "*_REPORT.md" \
   --exclude "CHECK_VPS_LOGS.md" \
+  --include "backend/.env" \
   $LOCAL_PATH ${SERVER_USER}@${SERVER_HOST}:${REMOTE_PATH}
 
 echo "✅ Файлы скопированы."

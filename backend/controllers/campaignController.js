@@ -172,7 +172,7 @@ async function getCampaignsStats(req, res, next) {
                _id: null,
                totalSuccess: { $sum: "$successCount" },
                totalErrors: { $sum: "$errorCount" },
-               totalRecipients: { $sum: { $size: "$recipients" } },
+               totalRecipients: { $sum: "$recipientsCount" },
             },
          },
       ]);
