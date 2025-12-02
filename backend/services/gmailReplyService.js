@@ -274,16 +274,36 @@ function reloadEnvVariables() {
 /**
  * Проверяет, изменился ли refresh token в переменных окружения
  * и переинициализирует Gmail API если нужно
+ * @param {boolean} forceReload - Принудительно перезагрузить .env файл
  */
-async function checkAndReinitIfTokenChanged() {
+async function checkAndReinitIfTokenChanged(forceReload = false) {
    // Перезагружаем переменные окружения из .env файла
-   reloadEnvVariables();
+   if (forceReload || !lastRefreshTokenValue) {
+      reloadEnvVariables();
+   } else {
+      // Принудительно перезагружаем при ошибках токена
+      reloadEnvVariables();
+   }
 
    const currentToken = process.env.GMAIL_REFRESH_TOKEN;
+
+   // Если токен отсутствует, но был ранее - это проблема
+   if (!currentToken && lastRefreshTokenValue) {
+      console.warn("⚠️  GMAIL_REFRESH_TOKEN отсутствует в .env файле");
+      return false;
+   }
 
    // Если токен изменился, переинициализируем
    if (currentToken && currentToken !== lastRefreshTokenValue) {
       console.log("🔄 Refresh token changed, reinitializing Gmail API...");
+      console.log(
+         `   Old token: ${
+            lastRefreshTokenValue
+               ? lastRefreshTokenValue.substring(0, 20) + "..."
+               : "none"
+         }`
+      );
+      console.log(`   New token: ${currentToken.substring(0, 20)}...`);
       lastRefreshTokenValue = currentToken;
       try {
          await initGmail();
@@ -293,6 +313,11 @@ async function checkAndReinitIfTokenChanged() {
          console.error("❌ Failed to reinitialize Gmail API:", err.message);
          return false;
       }
+   }
+
+   // Если токен не изменился, но мы принудительно проверяем, логируем
+   if (forceReload && currentToken) {
+      console.log("ℹ️  Refresh token unchanged, current token is valid");
    }
 
    return false;
@@ -340,17 +365,36 @@ async function periodicTokenCheck() {
                console.warn(
                   "⚠️  Refresh token validation failed during periodic check"
                );
-               // Пытаемся переинициализировать на случай, если токен был обновлен
-               const tokenUpdated = await checkAndReinitIfTokenChanged();
+               // Принудительно проверяем изменения токена при ошибке
+               const tokenUpdated = await checkAndReinitIfTokenChanged(true);
 
                // Если токен не был обновлен и это ошибка истечения, отправляем уведомление
                if (!tokenUpdated) {
-                  await sendTokenErrorNotification({
-                     message:
-                        checkError.message ||
-                        "Refresh token expired during periodic check",
-                     error: checkError,
-                  });
+                  // Отправляем уведомление только если прошло достаточно времени с последнего
+                  const now = Date.now();
+                  if (
+                     !lastTokenErrorNotification ||
+                     now - lastTokenErrorNotification >=
+                        TOKEN_ERROR_NOTIFICATION_INTERVAL
+                  ) {
+                     await sendTokenErrorNotification({
+                        message:
+                           checkError.message ||
+                           "Refresh token expired during periodic check",
+                        error: checkError,
+                     });
+                  } else {
+                     const minutesSinceLastNotification = Math.floor(
+                        (now - lastTokenErrorNotification) / (60 * 1000)
+                     );
+                     console.log(
+                        `⏭️  Skipping token error notification (sent ${minutesSinceLastNotification} minutes ago)`
+                     );
+                  }
+               } else {
+                  console.log(
+                     "✅ Token was updated and Gmail API reinitialized successfully"
+                  );
                }
             } else {
                // Если это не ошибка истечения токена, логируем предупреждение
@@ -396,8 +440,8 @@ async function refreshAccessToken() {
             "❌ Refresh token expired or invalid. Attempting to check for updated token..."
          );
 
-         // Проверяем, не обновился ли refresh token в .env
-         const tokenUpdated = await checkAndReinitIfTokenChanged();
+         // Принудительно перезагружаем .env и проверяем изменения токена
+         const tokenUpdated = await checkAndReinitIfTokenChanged(true);
 
          if (tokenUpdated) {
             console.log(
@@ -419,19 +463,42 @@ async function refreshAccessToken() {
                   "❌ Failed to refresh even with updated token:",
                   retryError.message
                );
+               // Если даже с новым токеном не получилось, возможно проблема в другом
+               if (isTokenExpiredError(retryError)) {
+                  console.error(
+                     "   The new refresh token also appears to be invalid. Please verify:"
+                  );
+                  console.error(
+                     "   1. GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET are correct"
+                  );
+                  console.error(
+                     "   2. Refresh token was obtained with the same OAuth2 credentials"
+                  );
+                  console.error(
+                     "   3. OAuth2 app is not in testing mode (or your account is added as test user)"
+                  );
+               }
             }
+         } else {
+            // Токен не обновился - отправляем уведомление
+            console.error("   Please update GMAIL_REFRESH_TOKEN in .env file");
+            console.error(
+               "   Run: node get-refresh-token.js to get a new refresh token"
+            );
+            console.error(
+               "   After updating, the system will automatically detect the change within 30 minutes"
+            );
+            console.error(
+               "   Or restart the backend container to apply immediately: docker-compose restart backend"
+            );
+
+            // Отправляем уведомление администратору
+            await sendTokenErrorNotification({
+               message:
+                  refreshError.message || "Refresh token expired or invalid",
+               error: refreshError,
+            });
          }
-
-         console.error("   Please update GMAIL_REFRESH_TOKEN in .env file");
-         console.error(
-            "   Run: node get-refresh-token.js to get a new refresh token"
-         );
-
-         // Отправляем уведомление администратору
-         await sendTokenErrorNotification({
-            message: refreshError.message || "Refresh token expired or invalid",
-            error: refreshError,
-         });
       } else {
          console.warn(
             "⚠️  Failed to refresh access token:",
@@ -450,6 +517,15 @@ async function handleGmailError(error, operation = "Gmail API operation") {
       console.warn(
          `⚠️  Token expired during ${operation}. Attempting to refresh...`
       );
+
+      // Сначала проверяем, не обновился ли refresh token в .env
+      const tokenUpdated = await checkAndReinitIfTokenChanged(true);
+      if (tokenUpdated) {
+         console.log(`✅ Refresh token was updated, retrying ${operation}...`);
+         return true; // Токен обновлен, можно повторить операцию
+      }
+
+      // Если токен не обновился, пытаемся обновить access token
       const refreshed = await refreshAccessToken();
       if (refreshed) {
          console.log(`✅ Token refreshed. Retrying ${operation}...`);
