@@ -23,7 +23,7 @@ let tokenCheckInterval = null; // Интервал для проверки то�
 let lastProactiveRefresh = null; // Время последнего проактивного обновления токена
 const TOKEN_ERROR_NOTIFICATION_INTERVAL = 60 * 60 * 1000; // 1 час между уведомлениями
 const TOKEN_CHECK_INTERVAL = 30 * 60 * 1000; // Проверка токена каждые 30 минут
-const PROACTIVE_REFRESH_INTERVAL = 7 * 24 * 60 * 60 * 1000; // Проактивное обновление раз в неделю (7 дней)
+const PROACTIVE_REFRESH_INTERVAL = 3 * 24 * 60 * 60 * 1000; // Проактивное обновление каждые 3 дня (для предотвращения истечения refresh token)
 const ADMIN_EMAIL = "mennekis@gmail.com"; // Email для уведомлений об ошибках токена
 
 // Схема для отслеживания обработанных писем (защита от дубликатов)
@@ -340,11 +340,15 @@ async function periodicTokenCheck() {
             now - lastProactiveRefresh >= PROACTIVE_REFRESH_INTERVAL;
 
          try {
-            // Проактивное обновление: обновляем access token раз в неделю,
+            // Проактивное обновление: обновляем access token каждые 3 дня,
             // даже если он еще не истек, чтобы сбросить таймер неактивности refresh token
+            // Примечание: access token также обновляется при каждой проверке email (каждые 5 минут)
             if (shouldProactivelyRefresh) {
+               const daysSinceLastRefresh = Math.floor(
+                  (now - lastProactiveRefresh) / (24 * 60 * 60 * 1000)
+               );
                console.log(
-                  "🔄 Proactive token refresh (weekly maintenance to prevent refresh token expiration)..."
+                  `🔄 Proactive token refresh (${daysSinceLastRefresh} days since last refresh, maintenance to prevent refresh token expiration)...`
                );
                const { credentials } = await oauth2Client.refreshAccessToken();
                oauth2Client.setCredentials(credentials);
@@ -359,6 +363,16 @@ async function periodicTokenCheck() {
                oauth2Client.setCredentials(credentials);
                gmail = google.gmail({ version: "v1", auth: oauth2Client });
                // Если успешно, токен валиден
+               const daysSinceLastRefresh = lastProactiveRefresh
+                  ? Math.floor(
+                       (now - lastProactiveRefresh) / (24 * 60 * 60 * 1000)
+                    )
+                  : 0;
+               if (daysSinceLastRefresh > 0) {
+                  console.log(
+                     `ℹ️  Token check: last proactive refresh was ${daysSinceLastRefresh} day(s) ago`
+                  );
+               }
             }
          } catch (checkError) {
             if (isTokenExpiredError(checkError)) {
@@ -1156,6 +1170,31 @@ async function checkAndProcessReplies() {
          await initGmail();
       }
 
+      // Обновляем access token при каждой проверке email для поддержания активности refresh token
+      // Это сбрасывает таймер неактивности Google и предотвращает истечение refresh token
+      if (oauth2Client && process.env.GMAIL_REFRESH_TOKEN) {
+         try {
+            const { credentials } = await oauth2Client.refreshAccessToken();
+            oauth2Client.setCredentials(credentials);
+            gmail = google.gmail({ version: "v1", auth: oauth2Client });
+            // Обновляем время последнего проактивного обновления
+            lastProactiveRefresh = Date.now();
+         } catch (tokenError) {
+            // Если ошибка токена, обрабатываем через handleGmailError
+            const shouldRetry = await handleGmailError(
+               tokenError,
+               "token refresh during email check"
+            );
+            if (!shouldRetry) {
+               // Если не удалось обновить токен, пропускаем эту проверку
+               console.warn(
+                  "⚠️  Skipping email check due to token refresh failure"
+               );
+               return;
+            }
+         }
+      }
+
       // Инициализируем модель ProcessedEmail, если еще не инициализирована
       if (!ProcessedEmail && mongoose.connection.readyState === 1) {
          ProcessedEmail =
@@ -1278,6 +1317,11 @@ function startEmailChecker() {
          `✅ Token checker started (checking every ${
             TOKEN_CHECK_INTERVAL / 1000 / 60
          } minutes, proactive refresh every ${proactiveDays} days)`
+      );
+      console.log(
+         `ℹ️  Access token is also refreshed every ${
+            CHECK_INTERVAL / 1000 / 60
+         } minutes during email checks to maintain refresh token activity`
       );
    }
 
