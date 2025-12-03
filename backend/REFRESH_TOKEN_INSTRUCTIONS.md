@@ -3,14 +3,17 @@
 ## Проблема
 
 Ошибка `redirect_uri_mismatch` возникает, потому что:
-- Текущий OAuth клиент имеет тип **"Web application"**
-- Redirect URI `your_secret_value` работает только для типа **"Desktop application"**
+
+-  Текущий OAuth клиент имеет тип **"Web application"**
+-  Redirect URI `your_secret_value` работает только для типа **"Desktop
+   application"**
 
 ## Решение: Создать Desktop Application клиент
 
 ### Шаг 1: Создание нового OAuth клиента
 
-1. Откройте [Google Cloud Console - Credentials](https://console.cloud.google.com/apis/credentials)
+1. Откройте
+   [Google Cloud Console - Credentials](https://console.cloud.google.com/apis/credentials)
 2. Нажмите **"CREATE CREDENTIALS"** → **"OAuth client ID"**
 3. Выберите тип приложения: **"Desktop app"** (Desktop application)
 4. Введите имя: "Gmail Sender Desktop Client" (или любое другое)
@@ -27,6 +30,7 @@ nano .env
 ```
 
 3. Обновите или добавьте:
+
 ```env
 GMAIL_CLIENT_ID=your_gmail_client_id.apps.googleusercontent.com
 GMAIL_CLIENT_SECRET=your_gmail_client_secret
@@ -38,6 +42,7 @@ GMAIL_REDIRECT_URI=your_secret_value
 ### Шаг 3: Получение нового refresh token
 
 1. Запустите скрипт:
+
 ```bash
 node get-refresh-token.js
 ```
@@ -67,12 +72,15 @@ docker-compose restart backend
 
 ## Альтернативное решение: Использовать Web application с localhost
 
-Если не хотите создавать новый клиент, можно использовать существующий Web application:
+Если не хотите создавать новый клиент, можно использовать существующий Web
+application:
 
 1. Убедитесь, что в Google Cloud Console добавлен redirect URI:
-   - `http://localhost:3000/api/auth/google/callback`
 
-2. Запустите локальный сервер для получения кода (требует дополнительной настройки)
+   -  `http://localhost:3000/api/auth/google/callback`
 
-**Рекомендация:** Используйте первый вариант (Desktop application) - он проще и надежнее.
+2. Запустите локальный сервер для получения кода (требует дополнительной
+   настройки)
 
+**Рекомендация:** Используйте первый вариант (Desktop application) - он проще и
+надежнее.

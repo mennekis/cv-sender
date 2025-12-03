@@ -1,74 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
    <head>
       <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>Seafarer CV Mailing</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Gmail Sender App - Email Campaign Management</title>
       <link rel="stylesheet" href="style.css" />
    </head>
    <body>
-      <h1>Seafarer CV Mailing Launch</h1>
+      <h1>Gmail Sender App</h1>
+      <p><strong>Email Campaign Management System</strong></p>
 
       <form id="sendForm">
-         <label for="subject">Subject* : </label>
+         <label for="subject">Subject:</label>
          <input type="text" id="subject" name="subject" required />
 
-         <label for="coverLetter">Text of the letter * :</label>
+         <label for="coverLetter">Email Text:</label>
          <textarea id="coverLetter" name="coverLetter" required></textarea>
 
-         <label for="senderName"
-            >Sender's name (for example: Ivan Petrov) *</label
-         >
+         <label for="senderName">Sender Name:</label>
          <input type="text" id="senderName" name="senderName" required />
-         <label for="clientEmail"
-            >Sender's email address (for replies forwarding) *</label
-         >
+
+         <label for="clientEmail">Sender Email:</label>
          <input type="email" id="clientEmail" name="clientEmail" required />
-         <label for="contactPhone"
-            >Sender's contact phone number (for example: +380 123 456 789)
-            *</label
-         >
-         <input type="phone" id="contactPhone" name="contactPhone" required />
-         <p class="messengers">
-            Select the preferred messengers for this contact:
-         </p>
-         <label
-            ><input type="checkbox" name="messengers" value="viber" />
-            Viber</label
-         >
-         <label
-            ><input type="checkbox" name="messengers" value="whatsapp" />
-            WhatsApp</label
-         >
-         <label
-            ><input type="checkbox" name="messengers" value="telegram" />
-            Telegram</label
-         >
 
-         <label for="resume">Attach PDF file (resume) *</label>
-         <input
-            type="file"
-            id="resume"
-            name="resume"
-            accept="application/pdf"
-            required
-         />
+         <label for="contactPhone">Contact Phone:</label>
+         <input type="text" id="contactPhone" name="contactPhone" required />
 
-         <label for="emails"
-            >File with email addresses (CSV or XLS or XLSX) *</label
-         >
+         <div class="messengers">
+            <label>Messengers:</label>
+            <input type="checkbox" id="viber" name="messengers" value="Viber" />
+            <label
+               for="viber"
+               style="display: inline; font-weight: normal; margin-left: 5px"
+               >Viber</label
+            >
+
+            <input
+               type="checkbox"
+               id="whatsapp"
+               name="messengers"
+               value="WhatsApp"
+            />
+            <label
+               for="whatsapp"
+               style="display: inline; font-weight: normal; margin-left: 5px"
+               >WhatsApp</label
+            >
+
+            <input
+               type="checkbox"
+               id="telegram"
+               name="messengers"
+               value="Telegram"
+            />
+            <label
+               for="telegram"
+               style="display: inline; font-weight: normal; margin-left: 5px"
+               >Telegram</label
+            >
+         </div>
+
+         <label for="resume">Resume (PDF):</label>
+         <input type="file" id="resume" name="resume" accept=".pdf" required />
+
+         <label for="emails">Email Addresses File (CSV/Excel):</label>
          <input
             type="file"
             id="emails"
             name="emails"
-            accept=".csv, .xls,.xlsx"
+            accept=".csv,.xls,.xlsx"
             required
          />
 
-         <button type="submit">Start the mailing process</button>
+         <button type="submit">Start the mailing campaign</button>
       </form>
 
       <div id="status"></div>
+
+      <p style="margin-top: 40px">
+         <a href="/campaigns.html">View Campaigns</a> |
+         <a href="/privacy-policy.html">Privacy Policy</a>
+      </p>
 
       <script src="script.js"></script>
    </body>
