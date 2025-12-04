@@ -57,12 +57,18 @@ project-root/
 
 ## 📚 Документация
 
--  **TROUBLESHOOTING.md** - Решение проблем с пересылкой писем и Gmail токенами
+### API Документация
+
+-  **Swagger UI (интерактивная):** `https://sender.your_sendgrid_api_key/api-docs`
+-  **Markdown документация:** [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
+
+### Другая документация
+
 -  **GMAIL_TOKEN_MANAGEMENT.md** - Подробное руководство по управлению Gmail
    токенами
 -  **CRON_SETUP.md** - Настройка cron-задач для резервной обработки
--  **PROJECT_ANALYSIS.md** - Детальный анализ архитектуры проекта
--  **MONGODB_VIEW.md** - Руководство по просмотру данных в MongoDB
+-  **SSL_SETUP.md** - Настройка SSL сертификатов
+-  **PROJECT_REVIEW.md** - Ревью проекта и рекомендации
 
 ## 🔄 Миграция данных
 

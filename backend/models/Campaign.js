@@ -9,6 +9,7 @@ const CampaignSchema = new mongoose.Schema({
       type: String,
       required: true,
       unique: true,
+      // Индекс создается вручную ниже, не используем index: true
    },
    clientEmail: {
       type: String,

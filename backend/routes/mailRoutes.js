@@ -68,8 +68,80 @@ const upload = multer({
 });
 
 /**
- * POST /api/send
- * Отправка email рассылки с резюме
+ * @swagger
+ * /api/send:
+ *   post:
+ *     summary: Отправка email рассылки с резюме
+ *     tags: [Email]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - subject
+ *               - emailText
+ *               - senderName
+ *               - senderEmail
+ *               - resume
+ *               - emails
+ *             properties:
+ *               subject:
+ *                 type: string
+ *                 description: Тема письма
+ *               emailText:
+ *                 type: string
+ *                 description: HTML содержимое письма
+ *               senderName:
+ *                 type: string
+ *                 description: Имя отправителя
+ *               senderEmail:
+ *                 type: string
+ *                 format: email
+ *                 description: Email отправителя
+ *               contactPhone:
+ *                 type: string
+ *                 description: Контактный телефон
+ *               messengers:
+ *                 type: string
+ *                 description: Список мессенджеров через запятую (Viber,WhatsApp,Telegram)
+ *               resume:
+ *                 type: string
+ *                 format: binary
+ *                 description: PDF файл с резюме (макс. 5MB)
+ *               emails:
+ *                 type: string
+ *                 format: binary
+ *                 description: CSV/Excel файл с email адресами (макс. 5MB)
+ *     responses:
+ *       200:
+ *         description: Рассылка завершена успешно
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 alias:
+ *                   type: string
+ *                 total:
+ *                   type: number
+ *                 success:
+ *                   type: number
+ *                 failed:
+ *                   type: number
+ *       400:
+ *         description: Ошибка валидации
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Превышен лимит запросов
+ *       500:
+ *         description: Внутренняя ошибка сервера
  */
 router.post(
    "/send",
@@ -84,14 +156,93 @@ router.post(
 );
 
 /**
- * POST /api/client-error
- * Обработка клиентских ошибок
+ * @swagger
+ * /api/client-error:
+ *   post:
+ *     summary: Отправка отчета об ошибке на клиенте
+ *     tags: [Email]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               message:
+ *                 type: string
+ *               stack:
+ *                 type: string
+ *               url:
+ *                 type: string
+ *               userAgent:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Отчет получен
+ *       429:
+ *         description: Превышен лимит запросов
  */
 router.post("/client-error", errorReportingLimiter, handleClientError);
 
 /**
- * POST /api/campaign/start
- * Запуск новой кампании
+ * @swagger
+ * /api/campaign/start:
+ *   post:
+ *     summary: Запуск новой кампании рассылки
+ *     tags: [Campaigns]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - clientName
+ *               - subject
+ *               - body
+ *               - senderName
+ *               - emails
+ *             properties:
+ *               clientName:
+ *                 type: string
+ *               clientEmail:
+ *                 type: string
+ *                 format: email
+ *               subject:
+ *                 type: string
+ *               body:
+ *                 type: string
+ *               text:
+ *                 type: string
+ *               senderName:
+ *                 type: string
+ *               contactPhone:
+ *                 type: string
+ *               messengers:
+ *                 type: string
+ *               emails:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Кампания запущена успешно
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 alias:
+ *                   type: string
+ *                 recipientsCount:
+ *                   type: number
+ *                 status:
+ *                   type: string
+ *       400:
+ *         description: Ошибка валидации
+ *       429:
+ *         description: Превышен лимит запросов
  */
 router.post(
    "/campaign/start",
@@ -103,20 +254,111 @@ router.post(
 );
 
 /**
- * GET /api/campaigns
- * Получение списка кампаний
+ * @swagger
+ * /api/campaigns:
+ *   get:
+ *     summary: Получение списка кампаний
+ *     tags: [Campaigns]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *           maximum: 1000
+ *         description: Количество записей
+ *       - in: query
+ *         name: skip
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Количество пропущенных записей
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, sending, completed]
+ *         description: Фильтр по статусу
+ *     responses:
+ *       200:
+ *         description: Список кампаний
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 campaigns:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Campaign'
+ *                 total:
+ *                   type: number
+ *                 limit:
+ *                   type: number
+ *                 skip:
+ *                   type: number
  */
 router.get("/campaigns", validateCampaignsQuery, getCampaigns);
 
 /**
- * GET /api/campaign/:alias
- * Получение деталей кампании по алиасу
+ * @swagger
+ * /api/campaign/{alias}:
+ *   get:
+ *     summary: Получение деталей кампании по алиасу
+ *     tags: [Campaigns]
+ *     parameters:
+ *       - in: path
+ *         name: alias
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Уникальный алиас кампании
+ *     responses:
+ *       200:
+ *         description: Детали кампании
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Campaign'
+ *       404:
+ *         description: Кампания не найдена
  */
 router.get("/campaign/:alias", getCampaignByAlias);
 
 /**
- * GET /api/campaigns/stats
- * Получение статистики по всем кампаниям
+ * @swagger
+ * /api/campaigns/stats:
+ *   get:
+ *     summary: Получение статистики по всем кампаниям
+ *     tags: [Campaigns]
+ *     responses:
+ *       200:
+ *         description: Статистика кампаний
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 campaigns:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: number
+ *                     completed:
+ *                       type: number
+ *                     sending:
+ *                       type: number
+ *                     pending:
+ *                       type: number
+ *                 emails:
+ *                   type: object
+ *                   properties:
+ *                     totalSuccess:
+ *                       type: number
+ *                     totalErrors:
+ *                       type: number
+ *                     totalRecipients:
+ *                       type: number
  */
 router.get("/campaigns/stats", getCampaignsStats);
 

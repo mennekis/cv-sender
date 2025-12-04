@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./config/swagger");
 const app = express();
 const mailRoutes = require("./routes/mailRoutes");
 const errorHandler = require("./middleware/errorHandler");
@@ -18,10 +20,35 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// Swagger UI для документации API
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
 // Rate limiting для всех API endpoints
 app.use("/api/", apiLimiter);
 
-// Health check endpoint (должен быть ДО маршрутов, чтобы nginx rewrite работал)
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Проверка состояния сервиса
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Сервис работает
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: ok
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 uptime:
+ *                   type: number
+ */
 app.get("/health", (req, res) => {
    res.json({
       status: "ok",
@@ -33,7 +60,29 @@ app.get("/health", (req, res) => {
 // Маршруты
 app.use("/", mailRoutes);
 
-// Health check endpoint для прямого доступа (без nginx)
+/**
+ * @swagger
+ * /api/health:
+ *   get:
+ *     summary: Проверка состояния сервиса (API endpoint)
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Сервис работает
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: ok
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 uptime:
+ *                   type: number
+ */
 app.get("/api/health", (req, res) => {
    res.json({
       status: "ok",

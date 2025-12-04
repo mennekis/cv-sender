@@ -22,8 +22,8 @@ let lastRefreshTokenValue = null; // Последнее значение refresh
 let tokenCheckInterval = null; // Интервал для проверки токена
 let lastProactiveRefresh = null; // Время последнего проактивного обновления токена
 const TOKEN_ERROR_NOTIFICATION_INTERVAL = 60 * 60 * 1000; // 1 час между уведомлениями
-const TOKEN_CHECK_INTERVAL = 30 * 60 * 1000; // Проверка токена каждые 30 минут
-const PROACTIVE_REFRESH_INTERVAL = 3 * 24 * 60 * 60 * 1000; // Проактивное обновление каждые 3 дня (для предотвращения истечения refresh token)
+const TOKEN_CHECK_INTERVAL = 10 * 60 * 1000; // Проверка токена каждые 10 минут (для быстрого обнаружения обновлений)
+const PROACTIVE_REFRESH_INTERVAL = 1 * 24 * 60 * 60 * 1000; // Проактивное обновление каждые 1 день (для предотвращения истечения refresh token)
 const ADMIN_EMAIL = "mennekis@gmail.com"; // Email для уведомлений об ошибках токена
 
 // Схема для отслеживания обработанных писем (защита от дубликатов)
@@ -47,8 +47,10 @@ function isTokenExpiredError(error) {
       errorMessage.includes("invalid_grant") ||
       errorMessage.includes("Token has been expired") ||
       errorMessage.includes("invalid_token") ||
+      errorMessage.includes("unauthorized_client") ||
       (error.response &&
          (error.response.data?.error === "invalid_grant" ||
+            error.response.data?.error === "unauthorized_client" ||
             error.response.data?.error_description?.includes(
                "Token has been expired"
             )))
@@ -379,6 +381,16 @@ async function periodicTokenCheck() {
                console.warn(
                   "⚠️  Refresh token validation failed during periodic check"
                );
+
+               // При ошибке unauthorized_client принудительно перезагружаем .env
+               const errorMsg = checkError.message || "";
+               if (errorMsg.includes("unauthorized_client")) {
+                  console.log(
+                     "🔄 Unauthorized client error detected, reloading .env..."
+                  );
+                  reloadEnvVariables();
+               }
+
                // Принудительно проверяем изменения токена при ошибке
                const tokenUpdated = await checkAndReinitIfTokenChanged(true);
 
@@ -585,12 +597,25 @@ async function initGmail() {
                // console.log("✅ Access token refreshed successfully"); // Для отладки
             } catch (refreshError) {
                if (isTokenExpiredError(refreshError)) {
-                  console.error(
-                     "❌ Refresh token expired or invalid during initialization."
-                  );
-                  console.error(
-                     "   Please update GMAIL_REFRESH_TOKEN in .env file"
-                  );
+                  const errorMsg = refreshError.message || "";
+                  if (errorMsg.includes("unauthorized_client")) {
+                     console.error(
+                        "❌ Gmail OAuth client mismatch. Client ID/Secret may be incorrect."
+                     );
+                     console.error(
+                        "   Please verify GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in .env"
+                     );
+                     console.error(
+                        "   They must match the Desktop Client used to generate the refresh token"
+                     );
+                  } else {
+                     console.error(
+                        "❌ Refresh token expired or invalid during initialization."
+                     );
+                     console.error(
+                        "   Please update GMAIL_REFRESH_TOKEN in .env file"
+                     );
+                  }
                   console.error(
                      "   Run: node get-refresh-token.js to get a new refresh token"
                   );
@@ -1316,7 +1341,7 @@ function startEmailChecker() {
       console.log(
          `✅ Token checker started (checking every ${
             TOKEN_CHECK_INTERVAL / 1000 / 60
-         } minutes, proactive refresh every ${proactiveDays} days)`
+         } minutes, proactive refresh every ${proactiveDays} day(s))`
       );
       console.log(
          `ℹ️  Access token is also refreshed every ${

@@ -97,21 +97,25 @@ const authUrl = oauth2Client.generateAuthUrl({
    access_type: "offline", // Важно для получения refresh token
    scope: SCOPES,
    prompt: "consent", // Важно! Без этого refresh token не будет выдан повторно
+   include_granted_scopes: true,
 });
 
 console.log("\n" + "=".repeat(60));
 console.log("🔐 Gmail OAuth2 Refresh Token Generator");
 console.log("=".repeat(60));
 console.log(`\n📌 Используемый redirect URI: ${REDIRECT_URI}`);
-console.log("\n⚠️  ВАЖНО: Если вы получили ошибку redirect_uri_mismatch:");
-console.log("   1. Перейдите в Google Cloud Console:");
+console.log("\n⚠️  ВАЖНО: Если вы получили ошибку 400: invalid_request:");
+console.log("   1. Убедитесь, что используется Desktop Client (не Web Client)");
+console.log("   2. Перейдите в Google Cloud Console:");
 console.log("      https://console.cloud.google.com/apis/credentials");
-console.log("   2. Выберите ваш OAuth 2.0 Client ID");
-console.log("   3. Убедитесь, что в 'Authorized redirect URIs' добавлен:");
+console.log("   3. Найдите ваш OAuth 2.0 Client ID (тип: Desktop app)");
+console.log("   4. Если используете Web Client, добавьте redirect URI:");
 console.log(`      ${REDIRECT_URI}`);
-console.log("   4. Если приложение в режиме тестирования:");
+console.log("   5. Если приложение в режиме тестирования:");
 console.log("      - Добавьте ваш email в 'Test users'");
 console.log("      - Или опубликуйте приложение (для production)");
+console.log("\n💡 Рекомендация: Создайте новый Desktop Client:");
+console.log("   CREATE CREDENTIALS → OAuth client ID → Desktop app");
 console.log("\n📋 Шаги для получения токена:");
 console.log("1. Откройте этот URL в браузере:");
 console.log("\n" + authUrl + "\n");

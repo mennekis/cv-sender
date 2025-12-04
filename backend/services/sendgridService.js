@@ -8,9 +8,9 @@ if (!process.env.SENDGRID_API_KEY) {
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-if (process.env.NODE_ENV === "development") {
-   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
+// ВАЖНО: Не отключайте проверку SSL даже в development
+// Если возникают проблемы с SSL, проверьте сертификаты или используйте правильный CA bundle
+// Для локальной разработки с самоподписанными сертификатами используйте NODE_EXTRA_CA_CERTS
 
 /**
  * Отправка email с использованием SendGrid
