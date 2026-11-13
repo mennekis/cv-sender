@@ -1,96 +1,58 @@
-<pre> <code> 
-# 🚢 Seafarer Resume Sender
+# Seafarer Resume Sender
 
-Сервис для автоматической массовой рассылки резюме моряков в крюинговые агентства с логированием, отчётами и возможностью подмены контента.
+An independent full-stack side project for managing CV email campaigns to maritime recruiting agencies.
 
-## ⚙️ Стек
+## Overview
 
-- Backend: Node.js + Express
-- Email: SendGrid API
-- Gmail API: Google APIs для обработки ответов
-- Frontend: HTML + JS
-- Хранилище: Cloudflare + локальный сервер или VPS
-- Вспомогательные библиотеки: `multer`, `csv-parse`, `googleapis`, `dotenv`
+The application accepts CV files and recipient data, sends campaigns through SendGrid, checks replies using Gmail OAuth 2.0, and stores campaign information in MongoDB. It includes an Express API, a lightweight browser UI, Swagger documentation, and a Docker/Nginx deployment setup.
 
-## 🆕 Новые возможности
+## Technology
 
-- ✅ **Автоматическое обновление Gmail токенов** - система автоматически обновляет access token при истечении
-- ✅ **Уведомления администратора** - автоматические email уведомления на `mennekis@gmail.com` при проблемах с токенами
-- ✅ **Обработка ошибок токена** - автоматическое обнаружение и обработка ошибок `invalid_grant`
-- ✅ **Оптимизация хранения данных** - вместо полного массива получателей сохраняется только количество (`recipientsCount`) для экономии места в БД
+- **Backend:** Node.js, Express, Mongoose
+- **Database:** MongoDB
+- **Email integrations:** SendGrid API, Gmail API, OAuth 2.0
+- **Frontend:** HTML, CSS, JavaScript
+- **Infrastructure:** Docker Compose, Nginx
+- **API documentation:** Swagger UI
 
----
+## Engineering approach
 
-## 📁 Структура проекта
-project-root/
-│
-├── backend/
-│ ├── controllers/
-│ │ └── mailController.js # Основная логика обработки и рассылки
-│ ├── services/
-│ │ ├── sendgridService.js # Логика отправки через SendGrid
-│ │ ├── parseCSV.js # Парсинг базы емейлов
-│ │ ├── logger.js # Логирование результатов
-│ │ └── notifier.js # Отправка финального отчёта админу
-│ ├── uploads/ # Временное хранение файлов
-│ ├── logs/ # Логи рассылки
-│ ├── config/
-│ │ └── sendgrid.js # Конфигурация SendGrid
-│ ├── routes/
-│ │ └── mailRoutes.js # API endpoint
-│ ├── middlewares/
-│ │ └── upload.js # Обработка файлов от клиента
-│ ├── app.js
-│ └── server.js
-│
-├── frontend/
-│ ├── public/
-│ │ └── styles.css
-│ ├── index.html # UI для загрузки PDF/CSV/шаблона
-│ └── main.js # Отправка данных на бэкенд
-│
-├── .env
-├── README.md
-└── package.json
+The backend separates HTTP routes, controllers, middleware, and services. Key implementation areas include recipient-file parsing, email campaign processing, response tracking, token-expiration handling, and persistence of campaign metadata.
 
-</code> </pre>
+This is a personal, AI-assisted project, not a production-scale commercial SaaS platform. I reviewed and integrated the generated code and worked through implementation and deployment issues.
 
-## 📚 Документация
+## Run locally
 
-### API Документация
-
--  **Swagger UI (интерактивная):** `https://sender.your_sendgrid_api_key/api-docs`
--  **Markdown документация:** [API_DOCUMENTATION.md](./API_DOCUMENTATION.md)
-
-### Другая документация
-
--  **GMAIL_TOKEN_MANAGEMENT.md** - Подробное руководство по управлению Gmail
-   токенами
--  **CRON_SETUP.md** - Настройка cron-задач для резервной обработки
--  **SSL_SETUP.md** - Настройка SSL сертификатов
--  **PROJECT_REVIEW.md** - Ревью проекта и рекомендации
-
-## 🔄 Миграция данных
-
-### Оптимизация хранения получателей
-
-В версии 2.0 была проведена оптимизация модели `Campaign`: вместо хранения
-полного массива получателей (`recipients`) теперь сохраняется только количество
-(`recipientsCount`). Это значительно уменьшает размер документов в БД.
-
-**Для миграции существующих данных:**
+You will need Node.js, npm, MongoDB, and credentials for any enabled third-party services.
 
 ```bash
+git clone https://github.com/mennekis/cv-sender.git
+cd cv-sender
 cd backend
-node migrate-recipients-to-count.js
+npm install
+cp .env.example .env
+npm run dev
 ```
 
-Скрипт автоматически:
+Configure `backend/.env` with your own values. Do not use the example placeholders as real credentials. When the backend starts, Swagger documentation is served at `/api-docs` on its configured host.
 
--  Найдет все кампании с полем `recipients`
--  Вычислит количество получателей
--  Установит `recipientsCount`
--  Удалит поле `recipients`
+The repository also includes `docker-compose.yml` and Nginx configuration; adapt hostnames, secrets, volumes, and ports before deployment.
 
-**Примечание:** После миграции полный список получателей будет недоступен,
-сохраняется только количество.
+## Current limitations
+
+- External email services require private credentials; a publicly accessible live demo is not provided.
+- The current `npm test` command is a placeholder, not an automated test suite.
+- Deployment configuration requires review before reuse in another environment.
+
+## Documentation
+
+- [API documentation](./API_DOCUMENTATION.md)
+- [Deployment notes](./DEPLOYMENT_SUMMARY.md)
+
+## Security
+
+Never commit real credentials, OAuth tokens, customer records, or recipient lists. If any secret was committed previously, revoke or rotate it and review Git history; removing it from the latest commit alone is not enough.
+
+## Author
+
+[Oleksiy Nikolayenko](https://www.linkedin.com/in/oleksiy-n-73849441/) — JavaScript/TypeScript developer working across enterprise web platforms, CMS modernization, frontend engineering, and automation.
