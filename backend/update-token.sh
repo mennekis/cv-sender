@@ -7,7 +7,16 @@ echo "🔐 Обновление Gmail Refresh Token"
 echo "=================================="
 
 ENV_FILE="/usr/src/app/.env"
-TOKEN="${1}"
+# Prefer stdin to avoid exposing secrets in shell history and process arguments.
+if [ "$#" -gt 0 ]; then
+    echo "Warning: command-line tokens may be exposed in process listings." >&2
+    TOKEN="$1"
+elif [ -t 0 ]; then
+    read -r -s -p "Gmail refresh token: " TOKEN
+    printf '\n'
+else
+    IFS= read -r TOKEN
+fi
 
 if [ -z "$TOKEN" ]; then
     echo ""
@@ -16,7 +25,7 @@ if [ -z "$TOKEN" ]; then
     echo "   docker-compose exec backend node get-refresh-token.js"
     echo ""
     echo "2. Или передайте токен напрямую:"
-    echo "   docker-compose exec backend ./update-token.sh YOUR_REFRESH_TOKEN"
+    echo "   Run ./update-token.sh interactively or provide token via stdin."
     echo ""
     exit 1
 fi
@@ -39,8 +48,7 @@ else
 fi
 
 echo ""
-echo "📋 Текущее значение:"
-grep "^GMAIL_REFRESH_TOKEN=" "$ENV_FILE"
+echo "✅ Token value hidden (not printed to console)."
 echo ""
 echo "✅ Готово! Перезапустите контейнер для применения изменений:"
 echo "   docker-compose restart backend"
