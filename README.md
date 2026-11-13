@@ -47,7 +47,6 @@ The repository also includes `docker-compose.yml` and Nginx configuration; adapt
 ## Documentation
 
 - [API documentation](./API_DOCUMENTATION.md)
-- [Deployment notes](./DEPLOYMENT_SUMMARY.md)
 
 ## Security
 
