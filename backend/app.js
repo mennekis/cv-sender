@@ -10,7 +10,8 @@ const { apiLimiter } = require("./middleware/rateLimiter");
 // CORS настройки для production
 const corsOptions = {
    origin: process.env.CORS_ORIGIN || "*",
-   credentials: true,
+   // Credentialed requests require a specific trusted origin, not a wildcard.
+   credentials: Boolean(process.env.CORS_ORIGIN && process.env.CORS_ORIGIN !== "*"),
    optionsSuccessStatus: 200,
 };
 
